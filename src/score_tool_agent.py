@@ -20,96 +20,62 @@ from agentflow.tools.code.python_execution import PythonExecutionTool
 from agentflow.inference.scorers.generative_scorer import BoolLogitsGenerativeScorer
 from agentflow.utils.tag_util import find_tags
 
-SYSTEM_PROMPT_TOOL="""
-You are a tool‑augmented reasoning expert to evaludate other assistents' answers towards specific questions.
-
-## GOAL
-Given a requirment, a question, two assistants' answres with one correct and the other one wrong.Think step‑by‑step,
-call tools when needed to distinguish which answer is correct, and finally output <answer>true</answer> or <answer>false</answer>.
-
-## ALLOWED TAGS
-• <think> … </think>  – private reasoning 
-  * In every <think>, restate the current micro-goal and the two most decisive rubric axes, update a compact ledger of knowns/unknowns/assumptions, then pick the smallest next step—either finalize a verdict (one-sentence reason) or propose one precise check.
-  * If new evidence just arrived, integrate only probative facts, note any conflicts and which side better fits the rubric, then decide again whether to conclude or run one minimal check.
-  * Progress rule: avoid repetition—each <think> must either add new evidence or tighten the verdict.
-• <rubric> … </rubric>  – evaluation criteria block; appears at most once 
-• <search> … </search> – web search query 
-  * single precise query only
-  * trigger ONLY if the fact is time-sensitive/non-trivial
-  * SKIP if answerable from provided context, common knowledge, or computable
-  * prefer to use structure as "[entity/topic] [specific claim/number] [constraint: time/domain]"
-  * avoid vague verbs like “verify/is it true” and direct url in queries;avoid duplicate queies.
-• <python> … </python> – Python code block 
-  * Code rules: left‑aligned; use print(...); no input(...), os.system(...), or infinite loops.  
-  * numpy as np, sympy and math are pre-imported and available. Other than the three above, you may manually import **standard library only**
-  * <python> is never for textual fact-checks, only real calculations.
-• <answer> … </answer> – final answer (exactly once per session)
-
-## INTERACTION RULES
-1. Every assistant message **must** start with a <rubric> block.
-2. Each session should only contain one <think> tag
-3. In each round,after the <think> block, output is **either**  
-   a) one tool tag (<search> or <python>) **and nothing else** 
-   b) the final <answer> tag. 
-4. Each tool type can be used **at most three times** per session.  
-5. **NEVER** output incomplete tags to avoid format exceptions.
-"""
 
 
 SYSTEM_PROMPT_TOOL_NO_SEARCH = """
-You are a tool-augmented math verifier.
-## GOAL
-From a chat-like SEQUENCE (QUESTION + ASSISTANT’S REASONING), write a concise verification text and decide if the reasoning correctly solves the QUESTION. Do not re-solve unless a small subcheck is needed.
+You are a teacher. Your task is to grade the solution, verifying correctness. Use Expected Answer to find any erroneous step in the Solution.
 
-## TOOLS
-Optional <python> for real calculations only; numpy as np, sympy, and math are pre-imported; standard library only; no web. Use at most 3 times; keep code minimal (e.g., simplify, substitution checks, small solves, coarse sampling).
+## GOAL
+Given a problem and a solution, you must:
+1) write a concise verification text that inspects the given solution step-by-step (do not re-solve unless a single local derivation is trivially needed);
+2) decide whether the solution correctly solves the problem;
+3) output a boolean verdict.
+
+You must prioritize checking the original soluiton via paper checks: legality of algebraic steps, substitution mentally for proposed roots, domain and edge cases, theorem prerequisites, and consistency of the final statement with intermediate steps. Do NOT produce a fresh full solution when the provided reasoning is wrong or incomplete.
+
+
+You may perform **multi-turn reasoning**. In each round:
+- Always start with <rubric>…</rubric> (once at the very beginning).
+- Then include exactly one <think>…</think>, with your private reasoning (state micro-goal, decisive axes, known/unknown, next step).
+- After <think>, you must choose one of two actions:
+  - **Tool-call**: output <python>…</python>, with safe left-aligned code using only print(...) (numpy, sympy, math pre-imported).
+  - **Final answer**: output <verify>…</verify> (concise inspection text) and <answer>true|false</answer> (exactly once, session ends).
 
 ## ALLOWED TAGS
-* <rubric>…</rubric> list 2–4 decisive axes you’ll check.
-* <think>…</think> exactly once; restate the micro-goal, two key axes, a brief known/unknown ledger; pick the smallest next step (conclude or one precise check).
-* <python>…</python> left-aligned code using print(...); no input/os/system/infinite loops.
-* <verify>…</verify> 60–160 words; check the given steps (legality, domains, edges), not a fresh full solution.
-* <answer>true|false</answer> exactly once.
+* <rubric> … </rubric> – required once at the very beginning, list 2–4 decisive axes you’ll check.
+* <think> … </think> – required exactly once per round; state reasoning progress.
+* <python> … </python> – optional, can be used at most three times across rounds, but only one per round. Left-aligned code, safe subset.
+* <verify> … </verify> – required in the final round only, ≈60–160 words or 5–10 bullets.
+* <answer> … </answer> – required in the final round only, exactly once.
 
-## INTERACTION RULES
-* Start every message with <rubric>. 2) Use exactly one <think>.
-* After </think>, output either (a) one <python> and nothing else; or (b) <verify> then <answer>.
-* No repetition: each <think> must add evidence or tighten the verdict.
-* Failure policy: if a critical step is invalid/incomplete/doesn’t answer the question → <answer>false</answer>.
-* Format: never place <verify>/<answer> inside <rubric>; no extra text outside tags.
+### Important
+- Do NOT fully re-solve the problem when the given reasoning is wrong; focus on checking legality of steps.
+- Do NOT output <verify>/<answer> in the same round as <python>.
+- The dialogue ends once you give <verify> and <answer>.
 
-## EXTRACTION FROM SEQUENCE
-* Take the first clear user problem as QUESTION; treat the assistant’s step-by-step as REASONING; any final value is the claimed result. If the sequence is noisy, verify only explicit claims relevant to the QUESTION.
-
-## MANDATORY INTENT CHECK (must appear first inside <verify>)
-* WHAT (from QUESTION): quote the exact quantity/condition requested (e.g., “find N mod m”, “minimum value”, “count of solutions on (a,b)”).
-* RESULT (from REASONING): quote what the assistant actually computed/claimed.
-* MATCH RULE: if WHAT ≠ RESULT in object, domain, constraints, or required form (e.g., modulus/interval/type), output <answer>false</answer>.
-* PREMISES AUDIT: list key premises as Given: […] vs Introduced: […]. If any Introduced premise is essential to the conclusion, output <answer>false</answer>.
-* ANSWER-FORM CHECK: confirm the claimed result matches the required format/range (integer, simplest radical, mod m residue, probability ∈[0,1], etc.); mismatch ⇒ false.
-
-## MANDATORY VERIFICATION HABITS (general)
-* V1 Transformations: check algebraic legality (no illegal cancellations/division by zero), identities, and stated assumptions.
-* V2 Counting/solutions: when equations use a transformed variable, change variables, track interval changes, handle boundary/special cases separately.
-* V3 Composition & tangency: if f(x)=φ(g(x)), zeros come from φ(·)=0; tangency requires the intersection f=0 and f′=0 (evaluate f′ on the zero set).
-* V4 Numeric sanity: use tiny spot-checks (substitution/residuals/monotonicity samples) to corroborate or refute a step.
-* V5 Acceptance: if key evidence (Intent check or V1–V4) is missing, run one minimal <python> or output <answer>false</answer>.
-
-## RUBRIC AXES (choose 2–4)
-* Goal alignment; algebraic legality; completeness & edge cases; numeric sanity; final statement matches the question.
 """
 
 USER_PROMPT="""
-The sequence for judge:
 {sequence}
 
-Your judgement:
+### Verification Task Reminder ###
 - Start with <rubric>…</rubric>.
 - Include exactly one <think>…</think>.
-- If you need a calculation to verify a step, after </think> output ONLY one <python>…</python> block (and nothing else) in this round.
-- Otherwise (or after the tool round), output:
-  <verify>…</verify>
-  <answer>true|false</answer>
+- After <think>, you must choose:
+  - Call tool: <python>…</python> (safe, left-aligned code using print(...); numpy, sympy, math already imported).
+  - Or finalize: 
+    <verify>…</verify>
+    <answer>true|false</answer>
+- Do not output <verify>/<answer> in the same round as <python>.
+- End only when <verify> and <answer> are given.
+"""
+
+DEFAULT_SEQ_TEMPLATE="""
+### Problem ###
+{problem}
+
+### Solution ###
+{solution}
 """
 
 
@@ -151,14 +117,14 @@ def build_sequences_for_block(
 ) -> List[str]:
     """
     把一条记录 (含 prompt 与 samples[*]) 转为若干 judge 'sequence' 文本：
-    默认格式： "User: {prompt}\nAssistant: {response}"
+    默认格式： "User: {problem}\nAssistant: {solution}"
     """
     prompt_text = block.get("question", "")
     samples = block.get("samples", []) or []
     seqs: List[str] = []
     for samp in samples:
         resp = to_text(samp)
-        seq = join_template.format(prompt=prompt_text, response=resp)
+        seq = join_template.format(problem=prompt_text, solution=resp)
         seqs.append(seq)
     return seqs
 
@@ -354,7 +320,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--output", required=True, type=str, help="Output JSONL with scores")
     p.add_argument("--record-batch-size", type=int, default=16, help="How many records per scoring batch")
     p.add_argument("--append", action="store_true", help="Append to output instead of overwrite")
-    p.add_argument("--join-template", type=str, default="User: {prompt}\nAssistant: {response}",
+    p.add_argument("--join-template", type=str, default=DEFAULT_SEQ_TEMPLATE,
                    help="How to form judge 'sequence' from prompt + response")
     p.add_argument("--judge-system-file", type=str, default=None, help="Optional system prompt file for the judge")
     p.add_argument("--judge-user-file", type=str, default=None, help="Optional user prompt file for the judge")

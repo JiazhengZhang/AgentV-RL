@@ -10,7 +10,13 @@ from agentflow.backend.hf_scalar_rm import HFRMBackend
 from agentflow.config import load_config
 from agentflow.utils.json_util import JsonUtil
 
+DEFAULT_SEQ_TEMPLATE="""
+### Problem ###
+{problem}
 
+### Solution ###
+{solution}
+"""
 
 def ensure_parent_dir(path: str):
     Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -69,27 +75,19 @@ def try_apply_chat_template(
 def build_sequences_for_block(
     block: Dict[str, Any],
     *,
-    use_chat_template: bool,
-    join_template: str = "User: {prompt}\nAssistant: {response}",
-    rm: Optional[HFRMBackend] = None,
+    join_template: str,
 ) -> List[str]:
     """
-    将一条记录（含 prompt 与 samples[*]）转换为待评分的文本序列列表。
-    优先使用 chat template，失败回退到 join_template。
+    把一条记录 (含 prompt 与 samples[*]) 转为若干 judge 'sequence' 文本：
+    默认格式： "User: {problem}\nAssistant: {solution}"
     """
     prompt_text = block.get("question", "")
     samples = block.get("samples", []) or []
     seqs: List[str] = []
-
     for samp in samples:
         resp = to_text(samp)
-        rendered: Optional[str] = None
-        if use_chat_template and rm is not None:
-            rendered = try_apply_chat_template(rm, prompt_text, resp)
-        if rendered is None:
-            # 朴素拼接回退
-            rendered = join_template.format(prompt=prompt_text, response=resp)
-        seqs.append(rendered)
+        seq = join_template.format(problem=prompt_text, solution=resp)
+        seqs.append(seq)
     return seqs
 
 
@@ -230,7 +228,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--batch-size", type=int, default=32, help="How many records (questions) per scoring batch")
     p.add_argument("--append", action="store_true", help="Append to output instead of overwrite")
     p.add_argument("--use-chat-template", action="store_true", help="Use RM's chat template to join prompt+response")
-    p.add_argument("--join-template", type=str, default="User: {prompt}\nAssistant: {response}", help="Fallback join format when not using chat template or when template fails")
+    p.add_argument("--join-template", type=str, default=DEFAULT_SEQ_TEMPLATE, help="Fallback join format when not using chat template or when template fails")
     p.add_argument("--max-records", type=int, default=None, help="Only process first N records")
     return p.parse_args()
 

@@ -98,7 +98,7 @@ class VllmChoiceLogitsBackend(CanGenerate, CanChoiceProbs,SupportChatTemplate,Ch
 
     
     
-    @torch.no_grad()
+    @torch.inference_mode()
     def choice_probs(self,
                     prefixes: Sequence[str],
                     choices: Sequence[Sequence[str]],
@@ -145,15 +145,19 @@ class VllmChoiceLogitsBackend(CanGenerate, CanChoiceProbs,SupportChatTemplate,Ch
 
             outputs = self.lm(input_ids=input_ids_tensor,
                                         attention_mask=attention_mask_tensor,
-                                        labels=labels_tensor)
+                                        labels=labels_tensor,
+                                        use_cache=False)
 
             valid_counts = (labels_tensor != -100).sum(dim=1).to(torch.float32) 
             valid_counts = torch.clamp(valid_counts, min=1.0)
 
             avg_nll = outputs.loss  
-            with torch.no_grad():
-                logits = self.lm(input_ids=input_ids_tensor,
-                                            attention_mask=attention_mask_tensor).logits  
+
+            with torch.inference_mode():
+                # logits = self.lm(input_ids=input_ids_tensor,
+                #                             attention_mask=attention_mask_tensor,
+                #                             use_cache=False).logits  
+                logits = outputs.logits 
                 log_probs = torch.log_softmax(logits[:, :-1, :], dim=-1)  
                 shifted_labels = labels_tensor[:, 1:].clone()
                 mask = shifted_labels != -100  
@@ -170,6 +174,10 @@ class VllmChoiceLogitsBackend(CanGenerate, CanChoiceProbs,SupportChatTemplate,Ch
 
             probs = torch.softmax(total_logprob_per_sample, dim=0)  
             all_group_probs.append(probs.detach().cpu().tolist())
+            del outputs, shifted_labels, mask,token_log_probs,total_logprob_per_sample
+            del input_ids_tensor, labels_tensor, attention_mask_tensor
+            torch.cuda.empty_cache()
+
 
         return all_group_probs
     

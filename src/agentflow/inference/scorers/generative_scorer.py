@@ -63,7 +63,7 @@ Your judgement:
                 results.append((prob_true)/max((prob_true+prob_false),1e-15))
         final_metas = []
         for ou, ms, meta in zip(outputs,msg_list,metas):
-            meta.update({"raw_text":ou})
+            meta.update({"raw_text":ou,"input_messages":ms})
             final_metas.append(meta)
         return results, final_metas
         

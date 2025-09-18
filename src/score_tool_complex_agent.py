@@ -224,14 +224,14 @@ def build_sequences_for_block(
 ) -> List[str]:
     """
     把一条记录 (含 prompt 与 samples[*]) 转为若干 judge 'sequence' 文本：
-    默认格式： "User: {prompt}\nAssistant: {response}"
+    默认格式： "User: {problem}\nAssistant: {solution}"
     """
     prompt_text = block.get("question", "")
     samples = block.get("samples", []) or []
     seqs: List[str] = []
     for samp in samples:
         resp = to_text(samp)
-        seq = join_template.format(prompt=prompt_text, response=resp)
+        seq = join_template.format(problem=prompt_text, solution=resp)
         seqs.append(seq)
     return seqs
 
