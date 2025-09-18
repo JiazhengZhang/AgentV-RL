@@ -77,7 +77,7 @@ def build_sequences_for_block(
     将一条记录（含 prompt 与 samples[*]）转换为待评分的文本序列列表。
     优先使用 chat template，失败回退到 join_template。
     """
-    prompt_text = block.get("prompt", "")
+    prompt_text = block.get("question", "")
     samples = block.get("samples", []) or []
     seqs: List[str] = []
 
