@@ -109,6 +109,8 @@ class VllmChoiceLogitsBackend(CanGenerate, CanChoiceProbs,SupportChatTemplate,Ch
 
         all_group_probs: List[List[float]] = []
         for prefix, choice_list in zip(prefixes, choices):
+            if len(prefix) > 8192:
+                prefix = prefix[(len(prefix)-8192):]
             prefix_ids = self.tokenizer(prefix, add_special_tokens=False).input_ids
 
            
@@ -146,7 +148,7 @@ class VllmChoiceLogitsBackend(CanGenerate, CanChoiceProbs,SupportChatTemplate,Ch
             outputs = self.lm(input_ids=input_ids_tensor,
                                         attention_mask=attention_mask_tensor,
                                         labels=labels_tensor,
-                                        use_cache=False)
+                                        )
 
             valid_counts = (labels_tensor != -100).sum(dim=1).to(torch.float32) 
             valid_counts = torch.clamp(valid_counts, min=1.0)

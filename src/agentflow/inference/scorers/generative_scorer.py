@@ -1,5 +1,7 @@
 from typing import List, Tuple, Dict, Any, Sequence, Callable
 
+from tqdm import tqdm
+
 from agentflow.core.interfaces import CanGenerate, CanRMScores, CanChoiceProbs
 from agentflow.utils.tag_util import find_tags
 
@@ -27,12 +29,39 @@ Your judgement:
         prob_calculator: CanChoiceProbs,
         system_prompt: str = None,
         user_prompt: str = None,
+        *,
+        prob_bs: int = 4,
+        choice_labels: Sequence[str] = ("true", "false"), 
+        eps: float = 1e-15,   
     ):
         super().__init__()
         self.generator = generator
         self.prob_calculator = prob_calculator
         self.system_prompt = system_prompt or self.DEFAULT_SYSTEM
         self.user_prompt = user_prompt or self.DEFAULT_USER
+        self.prob_bs = max(1, int(prob_bs))
+        self.choice_labels = tuple(choice_labels)
+        self.eps = eps
+        
+        
+    def _chunk(self, xs: Sequence[Any], n: int):
+        for i in range(0, len(xs), n):
+            yield i, xs[i:i+n]
+
+    def _batched_choice_probs(
+        self,
+        prefixes: Sequence[str],
+        labels: Sequence[str],
+        **kw
+    ) -> List[List[float]]:
+        """分批调用 prob_calculator.choice_probs，保持顺序不变。"""
+        all_probs: List[List[float]] = []
+        for _, pref_chunk in tqdm(self._chunk(prefixes, self.prob_bs),desc="Calculating probs"):
+            choices_chunk = [list(labels) for _ in range(len(pref_chunk))]
+            probs_chunk = self.prob_calculator.choice_probs(pref_chunk, choices_chunk, **kw)
+            probs_chunk = [list(map(float, p)) for p in probs_chunk]
+            all_probs.extend(probs_chunk)
+        return all_probs
     
     def score(self, sequences: Sequence[str], extra: List[Dict] = None, **kwargs) -> Tuple[List[float],List[Dict]]: 
         msg_list = [
@@ -52,7 +81,7 @@ Your judgement:
                 prefix_text = "Mock"
                 invalid_idxs.append(idx)
             prefixes.append(prefix_text)
-        probs = self.prob_calculator.choice_probs(prefixes,[["true","false"] for _ in range(len(prefixes))])
+        probs = self._batched_choice_probs(prefixes,self.choice_labels)
         results: List[float] = []
         for idx, prob in enumerate(probs):
             if idx in invalid_idxs:

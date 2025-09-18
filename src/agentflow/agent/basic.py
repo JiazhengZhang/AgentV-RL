@@ -65,7 +65,6 @@ class ToolDrivenAgent(CanGenerate):
         metas: List[Dict] = [{"steps": [], "context":contexts[i]} for i in range(prompt_len)]
         for round in range(self.max_rounds):
             active = [i for i in range(prompt_len) if not finished[i]]
-            
             if not active:
                 break
             
@@ -98,7 +97,8 @@ class ToolDrivenAgent(CanGenerate):
                 if all(finished):
                     break
                 continue
-
+            
+            tool_metas = []
             for j in to_call_local_indices:
                 i = active[j]
                 contexts[i].meta.setdefault("round_counter", {})

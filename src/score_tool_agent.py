@@ -246,10 +246,19 @@ import sympy
         if tags:
             return True
         return False
+    
+    def _error_gen(context: AgentContext):
+        msg = context.last_message()
+        tags = find_tags(msg.content,["answer","python","next"])
+        if tags:
+            return False
+        return True
+    
     agent = ToolDrivenAgent(
         backend=backend,
         tool_caller=caller,
         finish_fn=_finish_gen,
+        error_fn=_error_gen,
     )
 
     # 2) 读取 judge 模板；若未提供则用 BoolLogitsGenerativeScorer 默认

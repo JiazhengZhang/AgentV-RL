@@ -106,7 +106,7 @@ class AsyncSearchTool(BaseTool):
                 m.update(getattr(c, "meta", {}) or {})
 
             if self.enable_summarize and self.summarize_engine:
-                summaries, summarize_metas = self.summarize_engine.summarize_batch(outs, queries, user_prompts=None)
+                summaries, summarize_metas = self.summarize_engine.summarize_batch(outs, queries, metas)
                 outs = summaries
                 for m, sm in zip(metas, summarize_metas):
                     m.update(sm or {})
