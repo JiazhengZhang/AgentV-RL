@@ -80,7 +80,7 @@ class AsyncSearchTool(BaseTool):
         final_content = text
 
         if self.enable_summarize and self.summarize_engine:
-            summary, summarize_meta = self.summarize_engine.summarize(text, query)
+            summary, summarize_meta = self.summarize_engine.summarize(text, meta)
             meta.update(summarize_meta or {})
             final_content = summary
 
@@ -106,7 +106,7 @@ class AsyncSearchTool(BaseTool):
                 m.update(getattr(c, "meta", {}) or {})
 
             if self.enable_summarize and self.summarize_engine:
-                summaries, summarize_metas = self.summarize_engine.summarize_batch(outs, queries, metas)
+                summaries, summarize_metas = self.summarize_engine.summarize_batch(outs, metas)
                 outs = summaries
                 for m, sm in zip(metas, summarize_metas):
                     m.update(sm or {})

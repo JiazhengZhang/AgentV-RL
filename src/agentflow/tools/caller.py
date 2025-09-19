@@ -29,7 +29,7 @@ class ToolCaller:
         """
         if not metas:
             metas = [None]*len(texts)
-        calls_per_text = self.parser.parse_batch(texts,metas)
+        calls_per_text = self.parser.parse_batch(texts, metas)
         grouped: DefaultDict[str, List[Tuple[int,ToolCallRequest]]] = defaultdict(list)
         for tid, calls in enumerate(calls_per_text):
             for c in calls:

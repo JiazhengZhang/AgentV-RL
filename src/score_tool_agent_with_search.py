@@ -156,8 +156,9 @@ def flush_batch_and_write(
 
     # 2) 打分
     scores: List[float] = []
+    extras = [{"mission":seq} for seq in flat_sequences]
     if flat_sequences:
-        scores, metas = scorer.score(flat_sequences)
+        scores, metas = scorer.score(flat_sequences,extras)
 
     # 3) 回切并写出
     offset = 0
@@ -232,10 +233,32 @@ def score_streaming(
     config = load_config(config_path)
     backend = VllmChoiceLogitsBackend(config)
     registry = ToolRegistry()
-    def _get_prompt(content: str):
-        return f"{content}"
+
     summarizer = GeneratorSummarizer(
-        generator=backend, prompt_template_fn=_get_prompt,
+        generator=backend, prompt_template="""
+You are a summarizer specialized in processing web search results.  
+Your role is to extract and organize information that may help a verifier check whether a given answer to a specific question is correct.  
+
+Given qeestion and answer: 
+
+{mission}  
+
+Instructions:
+- Do NOT attempt to directly solve or answer the mission yourself.  
+- Only summarize or highlight relevant facts, definitions, formulas, examples, or reasoning patterns from the search results that could be useful for verification.  
+- If the search results contain conflicting information, point out the differences clearly.  
+- Be concise, neutral, and faithful to the source texts.  
+- Your output should serve as supporting evidence for a separate verifier, not as a final judgment.  
+
+Output format:
+- **Key Facts:** bullet points of extracted facts
+- **Potential Conflicts or Variations:** (if any)
+- **Useful References:** (optional, if sources mention notable names, theorems, datasets, etc.)
+
+Raw search results:
+{content}
+
+"""
     )
     search_tool = AsyncSearchTool(SearxngBackend("http://127.0.0.1:8888"),enable_summarize=True,summarize_engine=summarizer)
     py_tool = PythonExecutionTool()
