@@ -2,7 +2,7 @@ import json
 import jsonlines
 import re
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from dataclasses import is_dataclass, asdict
 from datetime import date, datetime
 from enum import Enum
@@ -26,30 +26,84 @@ class JsonUtil:
 
             
     @staticmethod
-    def parse_json(text:str)->List[Any] | None:
-        """Read and parse all json in the given text
-
-        Args:
-            text (str): input text
-
-        Returns:
-            list[dict] | None: json item
+    def parse_json(text: str) -> Optional[List[Any]]:
         """
-        all_matches = re.findall(r'\{.*?\}', text, re.DOTALL)
-        if len(all_matches) >= 1:
-            json_match=all_matches[0]
-        else:
-            json_match=None
-        json_list=[]
-        if json_match:
-            for each_mach in all_matches:
-                try:
-                    # parse json object
-                    json_data = json.loads(each_mach)
-                    json_list.append(json_data)
-                except:
-                    pass
-        return json_list
+        从文本中提取并解析所有 JSON 顶层对象/数组。
+        - 支持花括号 {..} 和方括号 [..] 的任意嵌套
+        - 正确忽略字符串中的括号和转义符
+        - 严格 JSON（双引号、无注释、无尾逗号）。如需宽松 JSON，请参考注释中的 json5 方案。
+
+        返回:
+            List[Any] | None
+        """
+        objs: List[Any] = []
+        in_str = False           # 是否在字符串里
+        escape = False           # 字符串内：上一字符是否为反斜杠
+        stack: List[str] = []    # 括号栈，元素为'{'或'['
+        start_idx: Optional[int] = None  # 当前顶层 JSON 片段的起始位置（包含起始括号）
+
+        def is_open(c: str) -> bool:
+            return c in '{['
+
+        def is_close(c: str) -> bool:
+            return c in '}]'
+
+        def match(open_c: str, close_c: str) -> bool:
+            return (open_c == '{' and close_c == '}') or (open_c == '[' and close_c == ']')
+
+        for i, ch in enumerate(text):
+            if in_str:
+                # 字符串内部的处理（只关心结束引号与转义）
+                if escape:
+                    escape = False
+                elif ch == '\\':
+                    escape = True
+                elif ch == '"':
+                    in_str = False
+                # 其他字符在字符串内不影响括号匹配
+                continue
+
+            # 不在字符串里
+            if ch == '"':
+                in_str = True
+                continue
+
+            if is_open(ch):
+                if not stack:
+                    # 新的顶层 JSON 片段开始
+                    start_idx = i
+                stack.append(ch)
+                continue
+
+            if is_close(ch):
+                if not stack:
+                    # 孤立的右括号，跳过
+                    continue
+                top = stack.pop()
+                if not match(top, ch):
+                    # 括号不匹配，重置（防止错误片段污染后续识别）
+                    stack.clear()
+                    start_idx = None
+                    continue
+
+                if not stack and start_idx is not None:
+                    # 一个完整的顶层 JSON 片段结束
+                    candidate = text[start_idx:i+1]
+                    # 尝试严格 JSON 解析
+                    try:
+                        objs.append(json.loads(candidate))
+                    except json.JSONDecodeError:
+                        # 如果你需要支持宽松 JSON（如尾逗号/单引号/注释），
+                        # 可以启用 json5 作为回退（第三方库：pip install json5）:
+                        # import json5
+                        # try:
+                        #     objs.append(json5.loads(candidate))
+                        # except Exception:
+                        #     pass
+                        pass
+                    start_idx = None
+
+        return objs or None
      
 
     @staticmethod

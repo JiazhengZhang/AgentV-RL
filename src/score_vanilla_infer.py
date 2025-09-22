@@ -9,6 +9,7 @@ from typing import List, Dict, Any, Optional
 from agentflow.config import load_config
 from agentflow.utils.json_util import JsonUtil
 from agentflow.utils.tag_util import find_tags
+from agentflow.utils.log_util import log_config, get_logger, print_args
 
 from agentflow.backend.vllm_logits import VllmChoiceLogitsBackend
 from agentflow.inference.scorers.generative_scorer import BoolLogitsGenerativeScorer
@@ -190,11 +191,14 @@ def score_streaming(
     judge_system_path: Optional[str],
     judge_user_path: Optional[str],
     max_records: Optional[int],
+    start_idx: int = 0,
 ):
     ensure_parent_dir(output_path)
 
     # 1) 初始化后端（同时可用于生成与 choice_probs）
     config = load_config(config_path)
+    logger = get_logger(config,__name__)
+    log_config(logger,config)
     backend = VllmChoiceLogitsBackend(config)
 
     # 2) 读取 judge 模板；若未提供则用 BoolLogitsGenerativeScorer 默认
@@ -225,7 +229,9 @@ def score_streaming(
     batch_sequences_per_block: List[List[str]] = []
     total = 0
 
-    for _, block in read_jsonl_stream(input_path, max_records=max_records):
+    for idx, block in read_jsonl_stream(input_path, max_records=max_records):
+        if idx < start_idx:
+            continue
         seqs = build_sequences_for_block(block, join_template=join_template)
         batch_blocks.append(block)
         batch_sequences_per_block.append(seqs)
@@ -268,11 +274,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--judge-system-file", type=str, default=None, help="Optional system prompt file for the judge")
     p.add_argument("--judge-user-file", type=str, default=None, help="Optional user prompt file for the judge")
     p.add_argument("--max-records", type=int, default=None, help="Only process first N records")
+    p.add_argument("--start_idx",type=int,default=0,help="Start idx of records")
     return p.parse_args()
 
 
 def main():
     args = parse_args()
+    print_args(args)
     score_streaming(
         config_path=args.config,
         input_path=args.input,
@@ -283,6 +291,7 @@ def main():
         judge_system_path=args.judge_system_file,
         judge_user_path=args.judge_user_file,
         max_records=args.max_records,
+        start_idx=args.start_idx,
     )
 
 

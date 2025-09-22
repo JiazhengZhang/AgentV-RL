@@ -69,9 +69,6 @@ class VllmBackend(CanGenerate, SupportChatTemplate, ChatTemplateDefaultsMixin):
         if is_chat_messages(prompts):
             prompts = self.apply_chat_template(prompts)
             
-        for prompt in prompts:
-            if len(prompt) > 30000:
-                prompt = prompt[(len(prompt)-30000):]
         
         outputs = self.engine.generate(
             prompts=prompts,

@@ -90,9 +90,6 @@ class VllmChoiceLogitsBackend(CanGenerate, CanChoiceProbs,SupportChatTemplate,Ch
         if is_chat_messages(prompts):
             prompts = self.apply_chat_template(prompts)
             
-        for prompt in prompts:
-            if len(prompt) > 30000:
-                prompt = prompt[(len(prompt)-30000):]
         
         results = self.vllm.generate(prompts=prompts, sampling_params=self.sampling_params)
         texts = [r.outputs[0].text if r.outputs else "" for r in results]

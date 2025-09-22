@@ -2,8 +2,9 @@ from typing import List, Tuple, Dict, Any, Sequence, Callable
 
 from tqdm import tqdm
 
-from agentflow.core.interfaces import CanGenerate, CanRMScores, CanChoiceProbs
+from agentflow.core.interfaces import CanGenerate, CanRMScores, CanChoiceProbs, SupportChatTemplate
 from agentflow.utils.tag_util import find_tags
+
 
 class SupportLogitsScore(CanGenerate,CanChoiceProbs):
     ...
@@ -69,14 +70,20 @@ Your judgement:
             {"role":"user","content":self.user_prompt.format_map({"sequence":seq})}]
             for seq in sequences
         ]
+        
+        try:
+            input_texts = self.generator.apply_chat_template(msg_list)
+        except:
+            input_texts = ""
+        
         outputs, metas = self.generator.generate(msg_list,extra)
         prefixes = []
         invalid_idxs = []
         for idx, out in enumerate(outputs):
-            answer_tags = find_tags(out)
+            answer_tags = find_tags(out,["answer"])
             if answer_tags:
                 target = answer_tags[-1]
-                prefix_text = out[:target.start]+"<answer>"
+                prefix_text = input_texts[idx]+out[:target.start]+"<answer>"
             else:
                 prefix_text = "Mock"
                 invalid_idxs.append(idx)

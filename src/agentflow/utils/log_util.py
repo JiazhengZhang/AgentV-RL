@@ -77,3 +77,9 @@ def log_config(logger: logging.Logger, config: Dict[str, Any], parent_key: str =
             log_config(logger, value, current_key)
         else:
             logger.info(f"{current_key}: {value}")
+            
+            
+def print_args(args):
+    """Print key-val pairs of args"""
+    for key, value in vars(args).items():
+        print(f"{key}: {value}")
