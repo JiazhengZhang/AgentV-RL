@@ -48,7 +48,7 @@ def _stats_and_has_fail(report: ExecutionReport) -> Tuple[Dict[str, int], bool]:
             failed += 1
         else:
             uncertain += 1
-    return {"passed": passed, "failed": failed, "uncertain": uncertain}, (failed > 0)
+    return {"passed": passed, "failed": failed, "uncertain": uncertain}, (failed > 0 or uncertain > 0)
 
 
 def build_rollout_for_model(

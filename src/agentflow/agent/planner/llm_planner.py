@@ -178,8 +178,6 @@ class LLMPlanner(BasePlanner):
                 except Exception as e:
                     last_err = e
                     attempt += 1
-                    if attempt <= self.max_retries:
-                        time.sleep(min(0.25 * (2 ** (attempt - 1)), 1.0)) 
 
             if plans[i] is None:
                 try:
