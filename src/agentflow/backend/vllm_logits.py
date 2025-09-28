@@ -8,7 +8,7 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from agentflow.utils.log_util import get_logger
-from agentflow.utils.chat_template import is_chat_messages, safe_apply_chat_template, ChatTemplateDefaultsMixin
+from agentflow.utils.chat_template import is_chat_messages, safe_apply_chat_template, ChatTemplateDefaultsMixin, left_truncate_text_by_token, resolve_context_window_len
 from agentflow.core.interfaces import CanGenerate, CanChoiceProbs,SupportChatTemplate
 
 class VllmChoiceLogitsBackend(ChatTemplateDefaultsMixin, CanGenerate, CanChoiceProbs,SupportChatTemplate):
@@ -49,7 +49,7 @@ class VllmChoiceLogitsBackend(ChatTemplateDefaultsMixin, CanGenerate, CanChoiceP
         ).eval()
 
 
-    def apply_chat_template(self, messages: List[Dict[str,str]], 
+    def apply_chat_template(self, messages: List[List[Dict[str,str]]], 
                             tokenize=False, 
                             add_generation_prompt=True, 
                             **additional_params) -> Union[str,Any]:
@@ -59,6 +59,8 @@ class VllmChoiceLogitsBackend(ChatTemplateDefaultsMixin, CanGenerate, CanChoiceP
             messages=messages,
             tokenize = tokenize,
             add_generation_prompt = add_generation_prompt,
+            explicit_max_model_len=resolve_context_window_len(self.vllm, self.tokenizer),
+            generation_max_new_tokens=self.sampling_config.get("max_tokens",1024),
             **merged
         )
 
@@ -90,11 +92,16 @@ class VllmChoiceLogitsBackend(ChatTemplateDefaultsMixin, CanGenerate, CanChoiceP
 
         if is_chat_messages(prompts):
             prompts = self.apply_chat_template(prompts)
+        else:
+            max_prompt_len = resolve_context_window_len(self.vllm, self.tokenizer) - self.sampling_config.get("max_tokens",1024) - 32
+            max_prompt_len = max(max_prompt_len, 128)
+            for i in range(len(prompts)):
+                prompts[i]=left_truncate_text_by_token(self.tokenizer, str(prompts[i]), max_prompt_len)
             
         
         results = self.vllm.generate(prompts=prompts, sampling_params=self.sampling_params)
         texts = [r.outputs[0].text if r.outputs else "" for r in results]
-        metas = [{"raw_output": r} for r in results]
+        metas = [{"raw_output": r, "prompt":prompt} for r, prompt in zip(results, prompts)]
         return texts, metas
 
 

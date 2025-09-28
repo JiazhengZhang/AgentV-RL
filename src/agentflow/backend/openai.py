@@ -76,7 +76,7 @@ class OpenaiBackend(CanGenerate):
             try:
                 resp = self.client.chat.completions.create(**args)
 
-                return resp.choices[0].message.content, {"raw":resp}
+                return resp.choices[0].message.content, {"raw":resp,"input_messages":messages}
 
             except Exception as e:
                 msg = f"[API attempt {attempt}/{max_retries}] Error: {e}"
