@@ -15,7 +15,7 @@ from agentflow.tools.registry import ToolRegistry
 from agentflow.tools.caller import ToolCaller       
 from agentflow.tools.base import ToolParser      
 from agentflow.agent.planner.llm_planner import LLMPlanner
-from agentflow.agent.executor.executor import VerificationSubtaskExecutor, simple_aggregate_verdict
+from agentflow.agent.executor.executor import VerificationSubtaskExecutor, simple_aggregate_verdict, ExecutorConfig
 from agentflow.agent.executor.integrator import integrate_and_predict, stats_and_has_fail, build_rollout_for_model
 from agentflow.utils.chat_template import is_chat_messages   
 from agentflow.utils.log_util import get_logger
@@ -55,7 +55,7 @@ class PlanSubtaskAgent(CanRMScores):
         prob_calculator: CanChoiceProbs,
         tool_registry: Optional[ToolRegistry] = None,
         final_system_prompt: Optional[str] = None,
-        final_user_prompt: Optional[str] = None
+        final_user_prompt: Optional[str] = None,
     ):
         super().__init__()
         self.backend = backend
@@ -66,6 +66,7 @@ class PlanSubtaskAgent(CanRMScores):
         self.executor = VerificationSubtaskExecutor(
             backend=backend,
             registry=registry,
+            config=ExecutorConfig(enable_early_stop=True)
         )
         self.scorer = BoolLogitsGenerativeScorer(
             generator=backend,

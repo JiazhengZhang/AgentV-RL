@@ -51,7 +51,7 @@ def stats_and_has_fail(report: ExecutionReport) -> Tuple[Dict[str, int], bool]:
     return {"passed": passed, "failed": failed, "uncertain": uncertain}, (failed > 0 or uncertain > 0)
 
 
-def build_rollout_for_model(
+def build_rollout_for_model_old(
     *,
     sequence: str,
     plan: Plan,
@@ -136,6 +136,148 @@ def build_rollout_for_model(
     lines.append("</rollout>")
     return "\n".join(lines)
 
+def build_rollout_for_model(
+    *,
+    sequence: str,
+    plan: "Plan",
+    report: "ExecutionReport",
+    max_chars_per_subtask: int = 2048
+) -> str:
+    """
+    Build a rollout of format
+    \<plan>
+    {} # JSON format plan
+    \</plan>
+    \<subtasks>
+      \<subtask>\</subtask>
+    \</subtasks>
+    """
+    def _esc_attr(s: Any) -> str:
+        if s is None:
+            return ""
+        return html.escape(str(s), quote=True)
+
+    def _json_compact(obj: Any) -> str:
+        try:
+            return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+        except Exception:
+            return json.dumps(str(obj), ensure_ascii=False)
+        
+    def _indent_block(block: str, levels: int = 2, unit: str = "  ") -> str:
+        if not block:
+            return ""
+        prefix = unit * levels
+        return "\n".join(prefix + line for line in block.splitlines())
+
+    def _coerce_list(x, default: Optional[List[str]] = None) -> List[str]:
+        if x is None:
+            return default or []
+        if isinstance(x, list):
+            return x
+        return [str(x)]
+
+    plan_dict: Dict[str, Any] = {
+        "problem_brief": getattr(plan, "problem_brief", "") or "",
+        "asked_quantity": getattr(plan, "asked_quantity", "") or "",
+        "assumptions_required": _coerce_list(getattr(plan, "assumptions_required", [])),
+    }
+    if getattr(plan, "reasoning", None):
+        plan_dict["reasoning"] = plan.reasoning
+    if getattr(plan, "meta", None):
+        if plan.meta:
+            plan_dict["meta"] = plan.meta
+
+    st_items: List[Dict[str, Any]] = []
+    for st in getattr(plan, "subtasks", []) or []:
+        item: Dict[str, Any] = {
+            "id": getattr(st, "id", ""),
+            "title": getattr(st, "title", ""),
+            "rationale": getattr(st, "rationale", "") or "",
+            "category": getattr(st, "category", "") or "",
+        }
+        if getattr(st, "tool_hint", None):
+            if st.tool_hint:
+                item["tool_hint"] = st.tool_hint
+        st_items.append(item)
+
+    plan_dict["subtasks"] = st_items
+
+    out_lines: List[str] = []
+    out_lines.append("<plan>")
+    out_lines.append(_json_compact(plan_dict))
+    out_lines.append("</plan>")
+
+    id2report: Dict = {}
+    for r in getattr(report, "subtask_reports", []) or []:
+        sid = getattr(r, "subtask_id", None)
+        if sid:
+            id2report[sid] = r
+
+    PRIORITY = ["answer", "verify", "rubric"]
+
+    def _smart_tail_with_priority(text: str, limit: int) -> str:
+
+        if not text or len(text) <= limit:
+            return text or ""
+
+        end = len(text)
+        ans_m = find_tags(text, allowed_tags=["answer"])
+        ver_m = find_tags(text, allowed_tags=["verify"])
+        rub_m = find_tags(text, allowed_tags=["rubric"])
+
+        last_ans = ans_m[-1] if ans_m else None
+        last_ver = ver_m[-1] if ver_m else None
+        last_rub = rub_m[-1] if rub_m else None 
+
+        start = None
+
+        def _span_fits(s: int, e: int) -> bool:
+            return (e - s) <= limit
+        if last_ans and last_ver:
+            both_start = min(last_ans.start, last_ver.start)
+            if _span_fits(both_start, end):
+                start = both_start
+        if start is None and last_ans:
+            if _span_fits(last_ans.start, end):
+                start = last_ans.start
+        if start is None and last_ver:
+            if _span_fits(last_ver.start, end):
+                start = last_ver.start
+        if start is None:
+            return text[-limit:]
+        curr_len = end - start
+        budget_left = limit - curr_len
+        if last_rub and last_rub.end <= start and budget_left > 0:
+            needed = (end - last_rub.start)
+            if needed <= limit:
+                start = last_rub.start
+                curr_len = end - start
+                budget_left = limit - curr_len
+
+        segment = text[start:end]
+        if len(segment) > limit:
+            segment = segment[-limit:]
+        return segment
+
+    out_lines.append("<subtasks>")
+    for st in getattr(plan, "subtasks", []) or []:
+        sid = getattr(st, "id", "")
+        cat = getattr(st, "category", "") or ""
+        title = getattr(st, "title", "") or ""
+
+        rep = id2report.get(sid)
+        raw_trace = getattr(rep, "raw_trace", "") if rep is not None else ""
+        clipped = _smart_tail_with_priority(raw_trace, max_chars_per_subtask)
+        clipped = _indent_block(clipped)
+
+        out_lines.append(f'  <subtask id="{_esc_attr(sid)}" category="{_esc_attr(cat)}" title="{_esc_attr(title)}">')
+        out_lines.append(clipped)
+        out_lines.append("  </subtask>")
+    out_lines.append("</subtasks>")
+
+    return "\n".join(out_lines)
+
+
 def _to_bool(text: str) -> Optional[bool]:
     if text is None:
         return None
@@ -152,8 +294,7 @@ def integrate_and_predict(
     sequences: List[str],
     plans: List[Plan],
     reports: List[ExecutionReport],
-    scorer: BoolLogitsGenerativeScorer,
-    include_tool_traces: bool = False
+    scorer: BoolLogitsGenerativeScorer
 ) -> List[FinalPrediction]:
     predictions: List[FinalPrediction] = [None] * len(sequences)
     rollouts_for_generation = []
@@ -163,9 +304,9 @@ def integrate_and_predict(
         
         stats, has_fail = stats_and_has_fail(report)
         rollout = build_rollout_for_model(
-            sequence=sequence, plan=plan, report=report,
-            include_tool_traces=include_tool_traces
+            sequence=sequence, plan=plan, report=report
         )
+        rollout = f"{sequence}\nJudge Rollout:\n{rollout}"
 
         if stats.get("failed",2) > 1:
             prediction = FinalPrediction(

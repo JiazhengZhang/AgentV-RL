@@ -35,6 +35,7 @@ class Plan:
     asked_quantity: str
     assumptions_required: List[str]
     subtasks: List[Subtask]
+    reasoning: str = ""
     stop_conditions: List[str] = field(default_factory=list)
     meta: Dict[str, Any] = field(default_factory=dict)
     
@@ -46,6 +47,7 @@ class Plan:
             asked_quantity=data.get("asked_quantity",""),
             assumptions_required=data.get("assumptions_required",""),
             subtasks=subtasks,
+            reasoning=data.get("reasoning",""),
             stop_conditions=data.get("stop_conditions",[]),
             meta=data.get("meta",{})
         )

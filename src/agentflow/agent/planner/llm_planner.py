@@ -7,6 +7,7 @@ from dataclasses import asdict
 from agentflow.agent.planner.interfaces import BasePlanner, Plan, Subtask
 from agentflow.agent.planner.prompts import PLANNER_SYSTEM, PLANNER_USER_TMPL
 from agentflow.utils.json_util import JsonUtil
+from agentflow.utils.tag_util import find_tags
 
 from agentflow.core.interfaces import CanGenerate
 
@@ -39,24 +40,6 @@ class JsonPlanParser:
             fixed.append(st)
         obj["subtasks"] = fixed
 
-        # 确保第1步是 intent_check；第2步包含 assumption_audit
-        if obj["subtasks"]:
-            if obj["subtasks"][0].get("category") != "intent_check":
-                obj["subtasks"].insert(0, {
-                    "id":"s0","title":"intent check","rationale":"ensure WHAT matches RESULT",
-                    "category":"intent_check","inputs":{"from":["QUESTION","REASONING"]},
-                    "tool_hint":{"python":False,"search":False,"max_calls":1},
-                    "expected_produce":{"type":"boolean","schema":{"meaning":"match"}},
-                    "stop_on_fail": True
-                })
-        if len(obj["subtasks"])<2 or all(st.get("category")!="assumption_audit" for st in obj["subtasks"][:2]):
-            obj["subtasks"].insert(1, {
-                "id":"s1a","title":"assumption audit","rationale":"list essential premises and detect new ones",
-                "category":"assumption_audit","inputs":{"from":["QUESTION","REASONING"]},
-                "tool_hint":{"python":False,"search":False,"max_calls":1},
-                "expected_produce":{"type":"boolean","schema":{"meaning":"no illegal new premise"}},
-                "stop_on_fail": True
-            })
         obj.setdefault("stop_conditions", [
             "asked_quantity mismatch confirmed",
             "critical assumption violated"
@@ -82,6 +65,7 @@ class JsonPlanParser:
             asked_quantity=obj.get("asked_quantity",""),
             assumptions_required=obj.get("assumptions_required",[]),
             subtasks=subtasks,
+            reasoning=obj.get("reasoning",""),
             stop_conditions=obj.get("stop_conditions",[]),
             meta=obj.get("meta",{})
         )
@@ -136,6 +120,11 @@ class LLMPlanner(BasePlanner):
             obj = obj[0]
         if not isinstance(obj, dict):
             raise ValueError("not a dict")
+        reasoning_tags = find_tags(raw,["reasoning"])
+        reasoning_str = ""
+        if reasoning_tags:
+            reasoning_str = reasoning_tags[-1].body
+        obj["reasoning"] = reasoning_str
         return obj
 
     def _coerce_to_plan(self, obj: Dict[str, Any]) -> Plan:

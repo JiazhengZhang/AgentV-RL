@@ -31,7 +31,7 @@ backend:                                # 推理后端与采样参数
     clip_range:
       - 0
       - 100.0
-    batech_size: null
+    batch_size: null
   hf:
     device: 1
     torch_dtype: "auto"

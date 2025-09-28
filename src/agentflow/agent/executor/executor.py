@@ -93,8 +93,7 @@ class VerificationSubtaskExecutor(SubtaskExecutor):
             return False
         return True
         
-    
-    # 批处理入口
+
     def execute(self, *, sequences: List[str], plans: List[Plan]) -> List[ExecutionReport]:
         return self._execute_all(sequences=sequences,plans=plans)
     
