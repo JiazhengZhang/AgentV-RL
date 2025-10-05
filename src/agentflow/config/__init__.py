@@ -18,6 +18,7 @@ sampling_config = {
     "max_tokens":1024,
     "top_p":1.0,
     "top_k":20,
+    "repetition_penalty":1.0,
 }
 
 vllm_config={

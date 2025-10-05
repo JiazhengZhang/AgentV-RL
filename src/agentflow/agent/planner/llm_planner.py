@@ -48,7 +48,16 @@ class JsonPlanParser:
 
     @staticmethod
     def to_plan(obj: Dict[str, Any]) -> Plan:
-        subtasks = []
+        subtasks = [Subtask(
+            id=FIXED_OVERALL_SUBTASK["id"],
+            title=FIXED_OVERALL_SUBTASK["title"],
+            rationale=FIXED_OVERALL_SUBTASK["rationale"],
+            category=FIXED_OVERALL_SUBTASK["category"],
+            inputs=FIXED_OVERALL_SUBTASK["inputs"],
+            tool_hint=FIXED_OVERALL_SUBTASK["tool_hint"],
+            expected_produce=FIXED_OVERALL_SUBTASK["expected_produce"],
+            stop_on_fail=FIXED_OVERALL_SUBTASK["stop_on_fail"],
+        )]
         for st in obj.get("subtasks", []):
             subtasks.append(Subtask(
                 id=st["id"],
@@ -92,6 +101,24 @@ MINIMAL_FALLBACK_OBJ = {
          "stop_on_fail": True}
     ],
     "stop_conditions": ["asked_quantity mismatch confirmed"]
+}
+
+FIXED_OVERALL_SUBTASK = {
+    "id": "fixed_overall",
+    "title": "Overall QA Judgement",
+    "rationale": "Directly judge correctness using only QUESTION and full REASONING (final answer included).",
+    "category": "final_consistency",   
+    "inputs": {"from": ["QUESTION", "REASONING"]},
+    "tool_hint": {"python": False, "search": False, "max_calls": 1},
+    "expected_produce": {
+        "type": "boolean",
+        "schema": {
+            "meaning": "is the final stated answer correct?",
+            "must_extract_final_answer": True,     
+            "must_state_reason": True              
+        }
+    },
+    "stop_on_fail": False
 }
 
 class LLMPlanner(BasePlanner):

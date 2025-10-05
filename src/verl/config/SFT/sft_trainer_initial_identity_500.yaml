@@ -1,0 +1,85 @@
+data:
+  train_batch_size: 4
+  micro_batch_size: null # will be deprecated, use micro_batch_size_per_gpu
+  micro_batch_size_per_gpu: 1  # this is also val batch size
+  train_files: /root/workspace/agent-rm/Agentic-Reward/data/SFT/sft_tool_result_500_identity_train.parquet
+  val_files: /root/workspace/agent-rm/Agentic-Reward/data/SFT/sft_tool_result_500_identity_val.parquet
+  # Single-turn settings
+  prompt_key: question
+  response_key: answer
+  prompt_dict_keys: null
+  response_dict_keys: null
+  # Multi-turn settings
+  multiturn:
+    enable: true  # Set to true to use multi-turn dataset
+    messages_key: messages  # Key for messages list in multi-turn mode
+    tools_key: tools  # Key for tools list in multi-turn mode
+    enable_thinking_key: enable_thinking  # Whether to enable thinking in multi-turn mode
+  max_length: 32768
+  truncation: left
+  balance_dp_token: False
+  chat_template: null
+  custom_cls:
+    path: null
+    name: null
+  use_shm: False
+model:
+  partial_pretrain: /root/workspace/agent-rm/models/Qwen-2.5-7B-Instruct
+  use_shm: False
+  fsdp_config:
+    model_dtype: bf16
+    wrap_policy:
+      min_num_params: 0
+    cpu_offload: False
+    offload_params: False
+  external_lib: null
+  enable_gradient_checkpointing: True
+  trust_remote_code: False
+  lora_rank: 0  # Set to positive value to enable LoRA (e.g., 32)
+  lora_alpha: 16  # LoRA scaling factor
+  target_modules: all-linear  # Target modules for LoRA adaptation
+  use_liger: False
+  strategy: fsdp # fsdp2会因为缺少torch接口报错，请不要用它 我也不知道为什么verl要调用私有接口
+optim:
+  lr: 5e-6
+  betas: [0.9, 0.95]
+  weight_decay: 0.01
+  warmup_steps_ratio: 0.1
+  clip_grad: 1.0
+  lr_scheduler: cosine
+ulysses_sequence_parallel_size: 1
+use_remove_padding: False
+trainer:
+  default_local_dir: /root/workspace/agent-rm/checkpoints/${trainer.project_name}/${trainer.experiment_name}
+  default_hdfs_dir: null
+  project_name: rm-sft-500-full-tool
+  experiment_name: exp_0724_1
+  total_epochs: 2
+  total_training_steps: null
+  logger: [ 'console' ]
+  seed: 1
+
+  save_freq: -1
+  test_freq: -1
+  nnodes: 1
+  n_gpus_per_node: 2
+  max_ckpt_to_keep: null  # Maximum number of checkpoints to keep, set to null to keep all
+
+  # Resume mode: "auto", "disable", or "resume_path"
+  # "auto": resume from last checkpoint if available
+  # "disable": start from scratch
+  # "resume_path": resume from a user-defined path
+  resume_mode: auto
+
+  # Path to resume training from (used when resume_mode is "resume_path" or "auto")
+  resume_from_path: null
+
+  # Checkpoint configuration
+  checkpoint:
+    # What to include in saved checkpoints
+    # with 'hf_model' you can save whole model as hf format, now only use sharded model checkpoint to save space
+    # save_contents: ["model", "optimizer", "extra"]
+    save_contents: ["hf_model"]
+    # For more flexibility, you can specify the contents to load from the checkpoint.
+    load_contents: ${trainer.checkpoint.save_contents}
+  device: cuda

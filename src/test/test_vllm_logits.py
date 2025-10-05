@@ -31,6 +31,10 @@ def test():
     print(f"prefix: {prefix_text}")
     probs = vllm_engine.choice_probs([prefix_text],[["true","false"]])
     print(probs)
+    
+    over_long = "Hello world" * 100000
+    result_overlong, meta = vllm_engine.generate([over_long])
+    print(result_overlong)
 
 if __name__ == "__main__":
     test()

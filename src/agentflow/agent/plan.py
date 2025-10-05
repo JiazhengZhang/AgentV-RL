@@ -95,7 +95,7 @@ class PlanSubtaskAgent(CanRMScores):
             metas = [{} for _ in range(len(sequences))] 
             for idx, result in enumerate(results):
                 scores[idx]=result.score
-                metas[idx]["raw_text"]=result.rollout_text
+                # metas[idx]["raw_text"]=result.rollout_text
                 metas[idx]["plan"]=plans[idx]
                 metas[idx]["subtask_reports"]=reports[idx]
                 metas[idx]["final_result"]=result

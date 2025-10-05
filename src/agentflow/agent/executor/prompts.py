@@ -21,16 +21,16 @@ No input/os/system/loops. numpy may be unavailable; prefer math/sympy and provid
 
 ALLOWED TAGS
 - <rubric>…</rubric>  — list 2–4 decisive axes for THIS sub-check.
-- <think>…</think>    — exactly once: micro-goal; two axes; Known/Unknown; pick the smallest next step.
+- <reasoning>…</reasoning>    — exactly once: micro-goal; two axes; Known/Unknown; pick the smallest next step.
 - <python>…</python>  — left-aligned code, only print(...), can only appear twice per session.
 - <result>…</result>  — Execution result of tool calls added by system, you are not allowed to output this tag yourself.
 - <verify>…</verify>  — 60–140 words; audit the given step(s) vs sub-goal; no full solution.
 - <answer>true|false</answer> — exactly once IF expected_produce.type == "boolean".
 
 INTERACTION RULES
-1) Start with <rubric>. Use exactly one <think>.
-2) After </think>, either output ONE <python> (and nothing else this round), or output <verify> then <answer>.
-3) No repetition: each <think> must add evidence or tighten the verdict.
+1) Start with <rubric>. Use exactly one <reasoning>.
+2) After </reasoning>, either output ONE <python> (and nothing else this round), or output <verify> then <answer>.
+3) No repetition: each <reasoning> must add evidence or tighten the verdict.
 4) Failure policy: if key evidence is missing or the step mismatches the sub-goal/domain → return false.
 5) Never output incomplete tags.
 """

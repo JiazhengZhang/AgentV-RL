@@ -28,6 +28,7 @@ class VllmChoiceLogitsBackend(ChatTemplateDefaultsMixin, CanGenerate, CanChoiceP
             top_p=self.sampling_config.get("top_p", 1.0),
             top_k=self.sampling_config.get("top_k", 50),
             stop=self.vllm_config.get("stop_tokens", []),
+            repetition_penalty=self.vllm_config.get("repetition_penalty",1.0),
             include_stop_str_in_output=True,
         )
         self.vllm = LLM(
@@ -118,10 +119,7 @@ class VllmChoiceLogitsBackend(ChatTemplateDefaultsMixin, CanGenerate, CanChoiceP
 
         all_group_probs: List[List[float]] = []
         for prefix, choice_list in zip(prefixes, choices):
-            if len(prefix) > 8192:
-                prefix = prefix[(len(prefix)-8192):]
             prefix_ids = self.tokenizer(prefix, add_special_tokens=False).input_ids
-
            
             input_id_batches = []
             label_batches = []

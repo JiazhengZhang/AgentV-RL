@@ -141,7 +141,7 @@ def build_rollout_for_model(
     sequence: str,
     plan: "Plan",
     report: "ExecutionReport",
-    max_chars_per_subtask: int = 2048
+    max_chars_per_subtask: int = 4096
 ) -> str:
     """
     Build a rollout of format
