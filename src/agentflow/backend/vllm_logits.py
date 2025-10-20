@@ -205,7 +205,8 @@ class VllmChoiceLogitsBackend(ChatTemplateDefaultsMixin, CanGenerate, CanChoiceP
 
         return all_group_probs
     
-
+    def get_vllm_instance(self) -> LLM:
+        return self.vllm
     
     @torch.no_grad()
     def choice_probs_old(self, prefixes: Sequence[str], choices: Sequence[Sequence[str]]) -> List[List[float]]:

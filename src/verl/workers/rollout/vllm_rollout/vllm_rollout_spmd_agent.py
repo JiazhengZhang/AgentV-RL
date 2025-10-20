@@ -219,9 +219,9 @@ class vLLMAgentWrapper:
         with simple_timer("agent generation", timing_generate):
         
             plans = self.planner.plan(qa_sequences)
-            self.logger.debug("Planning finished, executing subtasks.")
+            self.logger.info("Planning finished, executing subtasks.")
             reports = self.executor.execute(sequences=qa_sequences, plans=plans)
-            self.logger.debug("Subtasks ready, preforming final judge.")
+            self.logger.info("Subtasks ready, preforming final judge.")
             rollouts = [build_rollout_for_model(sequence=seq, plan=plan, report=report, max_chars_per_subtask=2800) for seq, plan, report in zip(qa_sequences,plans,reports)]
 
             final_inputs = [[
@@ -240,7 +240,7 @@ class vLLMAgentWrapper:
             for txt in final_rollouts:
                 ids = self.tokenizer(txt, add_special_tokens=False).input_ids
                 response_ids_list.append(ids)
-            self.logger.debug("Final judge ready, preparing data proto")
+            self.logger.info("Final judge ready, preparing data proto")
             response = pad_2d_list_to_length(
                 response_ids_list,
                 self.pad_token_id,
@@ -383,13 +383,13 @@ class vLLMAgentMultiTurnWrapper:
         with simple_timer("agent generation", timing_generate):
         
             plans = self.planner.plan(qa_sequences, None, **kwargs_middle)
-            self.logger.debug("Start Planning")
-            self.logger.debug("Planning finished, executing subtasks.")
+            self.logger.info("Start Planning")
+            self.logger.info("Planning finished, executing subtasks.")
 
-            self.logger.debug("Start Resports.")
+            self.logger.info("Start Resports.")
             reports = self.executor.execute(sequences=qa_sequences, plans=plans, **kwargs_middle)
 
-            self.logger.debug("Subtasks ready, preforming final judge.")
+            self.logger.info("Subtasks ready, preforming final judge.")
 
 
             rollouts = [build_rollout_for_model(sequence=seq, plan=plan, report=report, max_chars_per_subtask=2800) for seq, plan, report in zip(qa_sequences,plans,reports)]
@@ -410,7 +410,7 @@ class vLLMAgentMultiTurnWrapper:
             for txt in final_rollouts:
                 ids = self.tokenizer(txt, add_special_tokens=False).input_ids
                 response_ids_list.append(ids)
-            self.logger.debug("Final judge ready, preparing data proto")
+            self.logger.info("Final judge ready, preparing data proto")
             response = pad_2d_list_to_length(
                 response_ids_list,
                 self.pad_token_id,

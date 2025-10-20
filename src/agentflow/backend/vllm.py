@@ -29,7 +29,7 @@ class VllmBackend(ChatTemplateDefaultsMixin, CanGenerate, SupportChatTemplate):
             repetition_penalty=self.vllm_config.get("repetition_penalty",1.0),
             include_stop_str_in_output=True,
         )
-        self.engine = LLM(
+        self.vllm = LLM(
             model=self.backend_config["model_path"],
             dtype=self.backend_config.get("dtype","auto"),
             gpu_memory_utilization=self.vllm_config.get("gpu_memory_utilization",0.8),
@@ -37,7 +37,7 @@ class VllmBackend(ChatTemplateDefaultsMixin, CanGenerate, SupportChatTemplate):
             trust_remote_code=True,
         )
         
-        self.tokenizer = self.engine.get_tokenizer()
+        self.tokenizer = self.vllm.get_tokenizer()
         self.use_tqdm = self.vllm_config.get("use_tqdm",True)
     
     
@@ -51,7 +51,7 @@ class VllmBackend(ChatTemplateDefaultsMixin, CanGenerate, SupportChatTemplate):
             messages=messages,
             tokenize = tokenize,
             add_generation_prompt = add_generation_prompt,
-            explicit_max_model_len=resolve_context_window_len(self.engine, self.tokenizer),
+            explicit_max_model_len=resolve_context_window_len(self.vllm, self.tokenizer),
             generation_max_new_tokens=self.sampling_config.get("max_tokens",1024),
             **merged
         )
@@ -71,14 +71,14 @@ class VllmBackend(ChatTemplateDefaultsMixin, CanGenerate, SupportChatTemplate):
         if is_chat_messages(prompts):
             prompts = self.apply_chat_template(prompts)
         else:
-            max_prompt_len = resolve_context_window_len(self.engine, self.tokenizer) - self.sampling_config.get("max_tokens",1024) - 32
+            max_prompt_len = resolve_context_window_len(self.vllm, self.tokenizer) - self.sampling_config.get("max_tokens",1024) - 32
             max_prompt_len = max(max_prompt_len, 128)
             for i in range(len(prompts)):
                 prompts[i]=left_truncate_text_by_token(self.tokenizer, str(prompts[i]), max_prompt_len)
                 
             
         
-        results = self.engine.generate(
+        results = self.vllm.generate(
             prompts=prompts,
             sampling_params=self.sampling_params,
             use_tqdm=self.use_tqdm,
@@ -99,6 +99,8 @@ class VllmBackend(ChatTemplateDefaultsMixin, CanGenerate, SupportChatTemplate):
         """
         return self._generate(prompts, extra, **kwargs)
     
+    def get_vllm_instance(self) -> LLM:
+        return self.vllm
     
     
     def _parse_config(self):
@@ -131,11 +133,11 @@ class VllmInjectionBackend(ChatTemplateDefaultsMixin, CanGenerate, SupportChatTe
         else:
             self.logger = get_logger(config, __name__)
         self.sampling_params = sampling_params
-        self.engine = llm
+        self.vllm = llm
         
         self._parse_config()
         
-        self.tokenizer = self.engine.get_tokenizer()
+        self.tokenizer = self.vllm.get_tokenizer()
         self.use_tqdm = self.vllm_config.get("use_tqdm",True)
     
     
@@ -149,7 +151,7 @@ class VllmInjectionBackend(ChatTemplateDefaultsMixin, CanGenerate, SupportChatTe
             messages=messages,
             tokenize = tokenize,
             add_generation_prompt = add_generation_prompt,
-            explicit_max_model_len=resolve_context_window_len(self.engine, self.tokenizer),
+            explicit_max_model_len=resolve_context_window_len(self.vllm, self.tokenizer),
             generation_max_new_tokens=self.sampling_config.get("max_tokens",1024),
             **merged
         )
@@ -169,14 +171,14 @@ class VllmInjectionBackend(ChatTemplateDefaultsMixin, CanGenerate, SupportChatTe
         if is_chat_messages(prompts):
             prompts = self.apply_chat_template(prompts)
         else:
-            max_prompt_len = resolve_context_window_len(self.engine, self.tokenizer) - self.sampling_config.get("max_tokens",1024) - 32
+            max_prompt_len = resolve_context_window_len(self.vllm, self.tokenizer) - self.sampling_config.get("max_tokens",1024) - 32
             max_prompt_len = max(max_prompt_len, 128)
             for i in range(len(prompts)):
                 prompts[i]=left_truncate_text_by_token(self.tokenizer, str(prompts[i]), max_prompt_len)
     
             
         
-        results = self.engine.generate(
+        results = self.vllm.generate(
             prompts=prompts,
             sampling_params=self.sampling_params,
             use_tqdm=self.use_tqdm,
@@ -198,7 +200,8 @@ class VllmInjectionBackend(ChatTemplateDefaultsMixin, CanGenerate, SupportChatTe
         return self._generate(prompts, extra, **kwargs)
     
 
-    
+    def get_vllm_instance(self) -> LLM:
+        return self.vllm
     
     def _parse_config(self):
         backend_config = self.config["backend"]

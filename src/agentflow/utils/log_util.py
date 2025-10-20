@@ -28,7 +28,7 @@ def get_logger(config: Optional[Dict[str, Any]] = None, name: str = "log") -> lo
     """
     cfg = (config or {}).get("logging", {}) or {}
 
-    level = _coerce_level(cfg.get("level", "INFO"))
+    level = _coerce_level(cfg.get("level", "DEBUG"))
     log_to_file = bool(cfg.get("log_to_file", False))
     log_file_dir = cfg.get("log_file_dir", "./logs")
     log_file_name = cfg.get("log_file_name", "default.log")

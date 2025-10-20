@@ -76,6 +76,7 @@ class ToolDrivenAgent(CanGenerate):
                 texts, backend_metas = self.backend.generate(batch_inputs, extra=batch_extra, **kwargs)
             except Exception as e:
                 self.logger.exception(e)
+                print(e)
                 break
             
             for j, i in enumerate(active):
