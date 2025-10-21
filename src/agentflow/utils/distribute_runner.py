@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from multiprocessing import Process, Queue, get_context
 from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Tuple, Protocol
 
+from agentflow.utils.log_util import get_logger
+
 class Initializer(Protocol):
     def __call__(self, worker_id: int, /, **context: Any) -> Any: ...
 
@@ -40,11 +42,7 @@ def _entrypoint(
 ) -> None:
     try:
         os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(i) for i in worker_gpu_set)
-        local_devices = list(range(len(worker_gpu_set)))
         state = initializer(worker_id, **ctx)
-        
-        if torch.cuda.is_available() and local_devices:
-            torch.cuda.set_device(local_devices[0])
             
         while not stop.is_set():
             try:
@@ -115,14 +113,14 @@ class OrderedProcessPool:
         self._initializer = initializer
         self._executor = executor
         self._initializer_context = dict(initializer_context or {})
-        cap = queue_capacity or max(2 * num_workers, 8)
+        cap = queue_capacity or max(8 * num_workers, 8)
         self._tq: Queue = self._ctx.Queue(maxsize=cap)
-        self._rq: Queue = self._ctx.Queue()
+        self._rq: Queue = self._ctx.Queue(maxsize=12)
         self._stop = self._ctx.Event()
         self._ps: List[Process] = []
         self._submitted = 0
         self._closed = False
-        
+        self.logger = get_logger(name = __name__)
         visible = resolve_visible_devices()
         worker_gpu_sets = split_even(visible, num_workers, gpus_per_worker)
         
@@ -139,6 +137,7 @@ class OrderedProcessPool:
         if self._closed:
             raise RuntimeError("pool is closed")
         idxs: List[int] = []
+        self.logger.info(f"Submit batch of length {len(batches)}.")
         for payload in batches:
             i = self._submitted
             self._submitted += 1
@@ -152,8 +151,12 @@ class OrderedProcessPool:
         got = 0
         start = time.time()
         while got < total:
+            for wid, p in enumerate(self._ps):
+                if not p.is_alive():
+                    raise RuntimeError(f"[pool] worker#{wid} pid={p.pid} died exit={p.exitcode}; results still pending")
             try:
                 res: BatchResult = self._rq.get(timeout=poll_seconds)
+                self.logger.info(f"Task of index {res.index} finished.")
             except queue.Empty:
                 if timeout_seconds and (time.time() - start) > timeout_seconds:
                     raise TimeoutError("iterate timed out")

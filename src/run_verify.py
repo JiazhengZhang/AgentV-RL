@@ -10,6 +10,7 @@ from agentflow.tools.registry import ToolRegistry
 from agentflow.tools.code.python_execution import PythonExecutionTool
 from agentflow.agent.plan import PlanSubtaskAgent
 from agentflow.utils.json_util import JsonUtil
+from agentflow.utils.log_util import get_logger
 from agentflow.utils.distribute_runner import OrderedProcessPool
 
 SYSTEM_PROMPT = """
@@ -87,6 +88,7 @@ def exec_score(agent: PlanSubtaskAgent, /, *, batch: List[Dict[str, Any]]):
     for item in batch:
         seqs: List[str] = item["sequences"]
         scores, metas = agent.score(seqs)
+        metas = JsonUtil.json_sanitize(metas)
         out.append({"scores": scores, "metas": metas, "count": len(seqs)})
     return out
 
@@ -212,6 +214,8 @@ def main():
                 break
     finally:
         pool.close()
+        import sys
+        sys.exit(1)
 
     print(f"[DONE] Judged {total_records} records → {args.output}")
 

@@ -15,7 +15,7 @@ backend:                                # 推理后端与采样参数
     top_k: 20                           # 只在前 K 个候选中采样（<=0 表示不启用）
     repetition_penalty: 1.0
   vllm:                                 # vLLM 专属配置（仅在使用 vLLM 时生效）
-    gpu_memory_utilization: 0.7         # 单卡显存利用率上限（0~1 之间）
+    gpu_memory_utilization: 0.65         # 单卡显存利用率上限（0~1 之间）
     tensor_parallel_size: 1             # 张量并行大小（=GPU 数或其因数）
     stop_tokens:
       - "</answer>"

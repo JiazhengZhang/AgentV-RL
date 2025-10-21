@@ -83,7 +83,7 @@ class PlanSubtaskAgent(CanRMScores):
         self.backend = backend
         self.planner = LLMPlanner(backend)
         registry = tool_registry or ToolRegistry()
-        py_tool = PythonExecutionTool()
+        py_tool = PythonExecutionTool(use_tqdm=False)
         registry.register(py_tool)
         self.executor = VerificationSubtaskExecutor(
             backend=backend,
