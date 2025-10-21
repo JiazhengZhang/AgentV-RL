@@ -204,6 +204,7 @@ class vLLMRollout(BaseRollout):
         print(f"kwargs: {kwargs}")
         self.sampling_params = SamplingParams(**kwargs)
         
+        self.sampling_params.detokenize = True
         self.sampling_params.stop = ["</answer>","</python>"]
         self.sampling_params.include_stop_str_in_output=True
 
