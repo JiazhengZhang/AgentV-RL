@@ -16,7 +16,7 @@ python /root/workspace/agent-rm/Agent-Verifier/src/run_verify.py \
   --model_path /root/workspace/agent-rm/models/Qwen-2.5-7B-Instruct \
   --record-batch-size 1 \
   --include_full_meta \
-  --start_idx 0 \
+  --start_idx 274 \
   --append \
   --num-workers $NUM_WORKERS \
   --max-inflight-batches $NUM_WORKERS \

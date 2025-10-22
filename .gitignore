@@ -231,4 +231,5 @@ log/
 tmp/
 eval/
 scripts/outputs/
+scripts/*.sh
 

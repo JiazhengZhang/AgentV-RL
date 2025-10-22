@@ -6,6 +6,7 @@ import argparse
 import time
 import heapq
 from pathlib import Path
+from collections import Counter
 from typing import List, Dict, Any, Optional, Tuple
 
 import ray
@@ -113,6 +114,9 @@ class JudgeWorker:
             out.append({"scores": scores, "metas": metas, "count": len(seqs)})
         return out
 
+
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser("LLM-as-Judge with Ray (batch-by-batch, low-memory)")
     p.add_argument("--config", required=True, type=str)
@@ -182,6 +186,21 @@ def main():
             cur_blocks.append(block)
             cur_payload.append({"sequences": seqs})
         return cur_payload, cur_blocks
+    
+    def pick_worker(inflight: List[Tuple[int, "ray.ObjectRef", List[Dict[str, Any]]]],
+                    num_workers: int) -> int:
+        cnt = Counter(w for (w, _, _) in inflight)
+        return min(range(num_workers), key=lambda w: cnt.get(w, 0))
+
+    def submit_one() -> bool:
+        payload, blocks = build_one_payload_group()
+        if not payload:
+            return False
+        wid = pick_worker(inflight, num_workers)
+        obj = workers[wid].score_batch.remote(payload)
+        inflight.append((wid, obj, blocks))
+        logger.info(f"Submitted batch to worker#{wid}, size={len(payload)}")
+        return True
 
     inflight: List[Tuple[int, "ray.ObjectRef", List[Dict[str, Any]]]] = []  # (wid, obj, blocks)
     write_buffer: List[Dict[str, Any]] = []
@@ -217,7 +236,11 @@ def main():
             logger.info(f"Submitted batch to worker#{wid}, size={len(payload)}")
 
         while inflight:
-            ready, rest = ray.wait([obj for (_, obj, _) in inflight], num_returns=1, timeout=None)
+            ready, rest = ray.wait([obj for (_, obj, _) in inflight], num_returns=1, timeout=8)
+            if not ready:
+                while len(inflight) < window and submit_one():
+                    pass
+                continue
             obj_done = ready[0]
             i = next(k for k, (_, o, _) in enumerate(inflight) if o == obj_done)
             wid, _, blocks = inflight.pop(i)
@@ -266,12 +289,8 @@ def main():
                 if not flush_ready():
                     break
 
-            payload, blocks = build_one_payload_group()
-            if payload:
-                wid2 = (wid + 1) % num_workers
-                obj2 = workers[wid2].score_batch.remote(payload)
-                inflight.append((wid2, obj2, blocks))
-                logger.info(f"Submitted batch to worker#{wid2}, size={len(payload)}")
+            while len(inflight) < window and submit_one():
+                pass
 
     finally:
         while pending_heap:

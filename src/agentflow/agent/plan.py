@@ -94,21 +94,24 @@ class PlanSubtaskAgent(CanRMScores):
         registry = tool_registry or ToolRegistry()
         py_tool = PythonExecutionTool(use_tqdm=False)
         registry.register(py_tool)
+        
         self.executor = VerificationSubtaskExecutor(
             backend=backend,
             registry=registry,
             config=ExecutorConfig(enable_early_stop=False,use_tqdm = True)
         )
+        self.agent = self.executor.agent
         self.scorer = BoolLogitsGenerativeScorer(
             generator=backend,
             prob_calculator=prob_calculator,
             system_prompt=final_system_prompt or SYSTEM_PROMPT,
             user_prompt=final_user_prompt or USER_PROMPT,
+            chat_template_backend=self.agent.backend,
         )
         
         self.logger = get_logger(name = __name__)
         
-        self.agent = self.executor.agent
+        
         
     
     def score(
