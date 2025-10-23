@@ -55,6 +55,7 @@ def trans_messages_to_standard(
         msg_dict = msg.to_dict()
         if msg.role == "tool":
             msg_dict["role"]=tool_role_to_map
+            msg_dict["source"]="tool"
         msg_list.append(msg_dict)
     return msg_list
             

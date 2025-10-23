@@ -11,6 +11,7 @@ from agentflow.tools.registry import ToolRegistry
 from agentflow.tools.caller import ToolCaller
 from agentflow.tools.parser import TagToolParser
 from agentflow.tools.code.python_execution import PythonExecutionTool
+from agentflow.common.messages import Message, trans_messages_to_standard, trans_messages_to_text
 from agentflow.utils.tag_util import find_tags
 from agentflow.utils.log_util import get_logger
 
@@ -98,7 +99,44 @@ class VerificationSubtaskExecutor(SubtaskExecutor):
         
 
     def execute(self, *, sequences: List[str], plans: List[Plan], **kwargs) -> List[ExecutionReport]:
+        """Execute all subtask of a batch of plans
+        """
         return self._execute_all(sequences=sequences,plans=plans, **kwargs)
+    
+    
+    def execute_one(self, sequences: List[str], plans: List[Plan], subtasks: List[Subtask], **kwargs) -> List[VerificationSubtaskReport]:
+        input_msgs = []
+        for idx, (seq, subtask, plan) in enumerate(zip(sequences, subtasks, plan)):
+            input_msgs.append(self._format_subtask_prompt(seq, plan, subtask))
+        answers, metas = self.agent.generate(input_msgs, None, **kwargs)
+        reports: List[VerificationSubtaskReport] = []
+        for idx, (answer, meta) in enumerate(zip(answers, metas)):
+            plan = plans[idx]
+            subtask = subtasks[idx]
+            curr_agent_context: AgentContext = meta.get("context",AgentContext())
+            answer_tags = find_tags(answer, ["answer"])
+            if not answer_tags:
+                verdict = None
+            else:
+                verdict = VerificationSubtaskExecutor._to_bool(answer_tags[-1].body)
+                
+            verify_tags = find_tags(answer, ["verify"])
+            if not verify_tags:
+                verify_text = ""
+            else:
+                verify_text = verify_tags[-1].body
+            report=VerificationSubtaskReport(
+                subtask_id=subtask.id,
+                raw_trace=answer,
+                tool_traces=curr_agent_context.tool_results,
+                rounds_used=curr_agent_context.global_round,
+                notes=curr_agent_context.meta,
+                verdict=verdict,
+                verify_text=verify_text,
+                round_messages=curr_agent_context.all_messages(),
+            )
+            reports.append(report)
+        return reports
     
     def _execute_all(self, *, sequences: List[str], plans: List[Plan], **kwargs) -> List[ExecutionReport]:
         subtasks_per_plan: List[List[Subtask]] = []
@@ -143,6 +181,12 @@ class VerificationSubtaskExecutor(SubtaskExecutor):
                 curr_subtask = curr_plan[sub_task_idx]
                 curr_agent_context: AgentContext = meta.get("context",AgentContext())
                 
+                return_round_msgs = kwargs.get("save_round_messages", False)
+                if return_round_msgs:
+                    round_messages_to_save = curr_agent_context.all_messages()
+                else:
+                    round_messages_to_save = []
+                    
                 if self.config.save_full_meta == False:
                     curr_agent_context.meta.clear()
                     curr_agent_context.tool_results.clear()
@@ -166,6 +210,7 @@ class VerificationSubtaskExecutor(SubtaskExecutor):
                     notes=curr_agent_context.meta,
                     verdict=verdict,
                     verify_text=verify_text,
+                    round_messages=round_messages_to_save,
                 )
                 subtask_reports_per_plan[plan_idx].append(report)
                 

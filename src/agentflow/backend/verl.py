@@ -106,6 +106,47 @@ class VerlWgBackend(ChatTemplateDefaultsMixin, CanGenerate, SupportChatTemplate)
             keep_mask.append(False)
 
         return batch, keep_mask
+    
+    def prepare_dataproto(self, prompts: List[str], **kwargs) -> DataProto:
+        model_inputs = self.tokenizer(
+            prompts,
+            add_special_tokens=False,
+            padding=True,
+            truncation=True,
+            max_length=self.max_prompt_length,
+            return_attention_mask=True,
+            return_tensors="pt"
+        )
+
+        input_ids = model_inputs.pop("input_ids")
+        attention_mask = model_inputs.pop("attention_mask")
+        input_ids, attention_mask = verl_F.postprocess_data(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            max_length=self.max_prompt_length,
+            pad_token_id=self.tokenizer.pad_token_id,
+            left_pad=True,
+            truncation="left",
+        )
+        position_ids = compute_position_id_with_mask(attention_mask)
+
+        tensor_dict = {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "position_ids": position_ids,
+        }
+        
+        input_proto_meta = {
+            "eos_token_id": self.tokenizer.eos_token_id, 
+            "pad_token_id": self.tokenizer.pad_token_id,
+        }
+        
+        proto = DataProto.from_single_dict(
+            tensor_dict,
+            meta_info=input_proto_meta,
+        )
+        return proto
+        
 
     def _generate(self, prompts: List, extra: List[Dict] = None, **kwargs) -> Tuple[List[str],List[Dict]]:
 

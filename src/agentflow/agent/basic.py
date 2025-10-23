@@ -13,7 +13,8 @@ from agentflow.utils.chat_template import is_chat_messages
 from agentflow.utils.log_util import get_logger
 
 class ToolDrivenAgent(CanGenerate):
-    """An agent which can conduct multi-turn generation with tool-usage
+    """An agent which can conduct multi-turn generation with tool-usage.
+    It will discard any backend generation metainfo in generation.
     """
     def __init__(
         self,
@@ -65,6 +66,7 @@ class ToolDrivenAgent(CanGenerate):
         final_texts = ["" for _ in range(prompt_len)]
         finished = [False] * prompt_len
         metas: List[Dict] = [{"context":contexts[i]} for i in range(prompt_len)]
+        
         for round in range(self.max_rounds):
             active = [i for i in range(prompt_len) if not finished[i]]
             if not active:

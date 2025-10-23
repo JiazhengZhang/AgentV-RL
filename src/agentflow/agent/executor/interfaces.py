@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 from agentflow.agent.planner.interfaces import Plan
 from agentflow.tools.base import ToolCallResult
+from agentflow.common.messages import Message
 
 
 @dataclass
@@ -40,6 +41,7 @@ class SubtaskReport:
 class VerificationSubtaskReport(SubtaskReport):
     verdict: Optional[bool] = None          # True/False/None
     verify_text: str = ""                # <verify> 内容
+    round_messages: List[Message] = field(default_factory=dict)
     
     @classmethod
     def from_dict(cls, data: Dict):
@@ -47,6 +49,9 @@ class VerificationSubtaskReport(SubtaskReport):
         raw = data.get("tool_traces",[])
         for trace in raw:
             tool_traces.append(ToolCallResult.from_dict(trace))
+        round_messages_raw = data.get("round_messages",[])
+        round_messages = Message.from_dicts(round_messages_raw)
+            
         return VerificationSubtaskReport(
             subtask_id=data.get("subtask_id"),
             raw_trace=data.get("raw_trace",""),
@@ -55,8 +60,18 @@ class VerificationSubtaskReport(SubtaskReport):
             notes=data.get("notes",{}),
             verdict=data.get("verdict"),
             verify_text=data.get("verify_text",""),
-            
+            round_messages = round_messages,
         )
+        
+    def to_dict(self) -> Dict:
+        return {
+            "subtask_id": self.subtask_id,
+            "raw_trace": self.raw_trace,
+            "rounds_used": self.rounds_used,
+            "notes": self.notes,
+            "verdict": self.verdict,
+            "round_messages": self.round_messages,
+        }
 
 
 @dataclass
