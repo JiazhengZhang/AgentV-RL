@@ -6,7 +6,7 @@ logging:                               # 日志相关配置
   log_file_name: "default.log"         # 日志文件名
 
 backend:                                # 推理后端与采样参数
-  model_path: ""                        # 模型权重路径或服务名称（如本地HF路径/仓库名/远端模型名）
+  model_path: "deepseek-ai/DeepSeek-V3"                        # 模型权重路径或服务名称（如本地HF路径/仓库名/远端模型名）
   dtype: "auto"                         # 张量精度：auto/float32/bfloat16/float16 等
   sampling:                             # 统一的采样参数（被不同后端共用）
     temperature: 0.6                      # 温度，>1 更发散，=0 近似贪心
@@ -23,9 +23,9 @@ backend:                                # 推理后端与采样参数
       - "</next>"
     use_tqdm: false
   openai:                               # OpenAI/兼容接口配置（仅在使用 OpenAI 风格后端时生效）
-    api_key: "sk-xxx"                   # API Key（务必用环境变量或密钥管理）
-    url: ""                             # 自定义 Base URL（如走兼容网关时设置；官方可留空）
-    max_retries: ""                     # 最大重试次数（留空则用SDK默认；可填整数如 3）
+    api_key: "sk-bafbshbgvwptczgoaodrjrrggwkyxluxhmjqtphyobripjaw"                   # API Key（务必用环境变量或密钥管理）
+    url: "https://api.siliconflow.cn/v1"                             # 自定义 Base URL（如走兼容网关时设置；官方可留空）
+    max_retries: 3                     # 最大重试次数（留空则用SDK默认；可填整数如 3）
   rm:
     device: "cuda"
     padding_side: "right"

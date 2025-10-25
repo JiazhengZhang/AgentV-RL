@@ -27,6 +27,8 @@ from types import MethodType
 from typing import Any, List, Union, Dict, Optional
 
 import numpy as np
+import math
+import random
 import ray
 import torch
 import torch.distributed
@@ -49,14 +51,16 @@ from verl.workers.rollout.base import BaseRollout
 
 from agentflow.backend.vllm import VllmInjectionBackend
 from agentflow.backend.verl import VerlWgBackend, VerlWg
+from agentflow.backend.openai import OpenaiBackend
 from agentflow.agent.basic import ToolDrivenAgent
 from agentflow.agent.planner.llm_planner import LLMPlanner, MINIMAL_FALLBACK_OBJ, Plan, Subtask
-from agentflow.agent.executor.executor import VerificationSubtaskExecutor
+from agentflow.agent.executor.executor import VerificationSubtaskExecutor, ExecutionReport, SubtaskReport
 from agentflow.agent.executor.integrator import build_rollout_for_model
 from agentflow.tools.registry import ToolRegistry
 from agentflow.tools.parser import TagToolParser
 from agentflow.tools.code.python_execution import PythonExecutionTool
 from agentflow.tools.caller import ToolCaller
+from agentflow.utils.json_util import JsonUtil
 from agentflow.utils.tag_util import find_tags
 from agentflow.utils.log_util import get_logger
 from agentflow.config import load_config
@@ -129,6 +133,81 @@ DEFAULT_SEQ_TEMPLATE="""
 ### Solution ###
 {solution}
 """
+
+def _clip01(x: Any) -> float:
+    try:
+        f = float(x)
+        f /= 10
+    except Exception:
+        return 0.0
+    if math.isnan(f) or math.isinf(f):
+        return 0.0
+    return max(0.0, min(1.0, f))
+
+def _to_bool(v: Any) -> Optional[bool]:
+    if isinstance(v, bool) or v is None:
+        return v
+    s = str(v).strip().lower()
+    if s in ("true"):  
+        return True
+    if s in ("false"):  
+        return False
+    return None
+
+def _build_plan_analyze_prompt(seq: str, plan: Plan, answer: str) -> List[Dict[str, str]]:
+
+    
+    system_prompt = """You are a strict verifier for a plan that decomposes a verification task
+(judging whether an answer to a question is correct) into boolean subtasks.
+
+Your mission:
+1) Assess whether the plan meaningfully helps finish the verification task.
+2) Provide a scalar score in [0, 10].
+3) Give the ground truth (True/False) for each subtask ID exactly as given.
+
+SCORING RUBRIC (0–10):
+- Relevance to the main question (0–2): Subtasks align with what the question asks; no off-topic checks.
+- Proper use of given conditions (0–2): Subtasks explicitly and correctly leverage the problem’s stated data/assumptions.
+- Non-triviality & informativeness (0–2): Subtasks are meaningful (not filler), each contributes unique information.
+- Logical sufficiency to reach a verdict (0–3): If all subtask booleans are known, one can determine whether the final answer is correct (i.e., subtasks together are sufficient).
+- Clarity & minimal redundancy (0–1): Subtasks are well-scoped, non-duplicative, and avoid unnecessary overlap.
+
+INTERPRETATION RULES:
+- Judge each subtask by its own claim: return True if the claim is correct given the problem; False otherwise.
+- Prefer strict correctness over speculation; if the subtask’s condition cannot be supported by the prompt’s facts, mark False.
+- Do not invent new subtask IDs; output booleans for exactly the provided IDs.
+- Be consistent: the overall score should reflect the same standards used to judge subtasks.
+
+OUTPUT FORMAT (MUST be valid JSON):
+{
+  "plan_score": <float 0..10>,
+  "subtask_gt": {
+    "<subtask_id_1>": true | false,
+    "<subtask_id_2>": true | false,
+    ...
+  }
+}
+"""
+    
+    plan_info = f"problem_restatement: {plan.problem_brief}\n Assumptions: {plan.assumptions_required}\n target_quantity: {plan.asked_quantity}\nSubtasks:\n"
+    
+    for sub in plan.subtasks:
+        plan_info += f"ID: \"{sub.id}\" \ntitle: {sub.title}\nrationale: {sub.rationale}\ncategory: {sub.category}"
+        
+    
+    user_prompt = """The original Question and answer: 
+{seq}
+The correct answer to the question:
+{answer}
+The plan of the assistant:
+{plan_info}
+
+Please provide your assessment to the plan:
+    """.format(
+        seq = seq, answer = answer, plan_info = plan_info
+    )
+
+    return [{"role":"system","content":system_prompt},{"role":"user","content":user_prompt}]
 
 class vLLMAgentWrapper:
     
@@ -284,6 +363,7 @@ class vLLMAgentWrapper:
         return gather_output
         
 
+# TODO 需要进一步，plan部分也需要调用api模型直接把gt以及base reward 算好，因为reward wg只返回rm tensor
 
 
 class vLLMAgentMultiStageWrapper:
@@ -313,6 +393,7 @@ class vLLMAgentMultiStageWrapper:
             tokenizer=tokenizer,
             logger=self.logger,
         )
+        self.remote_backend = OpenaiBackend(config=ag_config, logger=self.logger)
         self.backend.set_chat_template_defaults(enable_thinking=False)
         tool_registry = ToolRegistry()
         py_tool = PythonExecutionTool()
@@ -326,6 +407,113 @@ class vLLMAgentMultiStageWrapper:
             self.backend,
             self.tool_registry,
         )
+        
+    
+        
+    def prepare_plan_labels(
+        self,
+        sequences: List[str],
+        plans: List[Plan],
+        answers: List[str] = None,
+        *,
+        max_retries: int = 3,
+    ) -> List[Dict]:
+        """
+        返回与 (sequences, plans) 一一对齐：
+        {
+          "plan_score": float in [0,1],
+          "raw_text": str,
+          "subtask_gt": { "<subtask_id>": bool|None, ... }
+        }
+        """
+        assert len(sequences) == len(plans)
+        N = len(sequences)
+        if not answers:
+            answers = ["NO STANDARD ANSWER PROVIDED"] * N
+        else:
+            for i in range(N):
+                if not answers[i] or not isinstance(answers[i], str):
+                    answers[i] = "NO STANDARD ANSWER PROVIDED"
+                
+                
+
+        def _parse_one(text: Optional[str], plan: Plan, answer) -> Optional[Dict[str,Any]]:
+            if not text:
+                return None
+            obj = JsonUtil.parse_json(text)  
+            if isinstance(obj, list):
+                if not obj: 
+                    return None
+                obj = obj[0]
+            if not isinstance(obj, dict):
+                return None
+
+            plan_score = _clip01(obj.get("plan_score", 0.0) )
+
+
+            want_ids = [st.id for st in plan.subtasks]
+            gt_in = obj.get("subtask_gt", {})
+            gt_out: Dict[str, Optional[bool]] = {}
+            if isinstance(gt_in, dict):
+                for sid in want_ids:
+                    gt_out[sid] = _to_bool(gt_in.get(sid, None))
+            else:
+                for sid in want_ids:
+                    gt_out[sid] = None
+
+            return {"plan_score": plan_score, "raw_text": text, "subtask_gt": gt_out}
+
+        prompts = [_build_plan_analyze_prompt(seq, plan, ans) for seq, plan, ans in zip(sequences, plans, answers)]
+        try:
+            texts, _ = self.remote_backend.generate(prompts)
+        except Exception as e:
+            texts = [None] * N
+            self.logger.exception(e)
+
+        results: List[Optional[Dict[str,Any]]] = [None] * N
+        pending = []
+        for i, (t, plan, ans) in enumerate(zip(texts, plans, answers)):
+            results[i] = _parse_one(t, plan, ans)
+            if results[i] is None:
+                pending.append(i)
+
+        attempt = 1
+        while pending and attempt < max_retries:
+            time.sleep(1)
+            retry_prompts = [prompts[i] for i in pending]
+            try:
+                retry_texts, _ = self.remote_backend.generate(retry_prompts)
+            except Exception:
+                retry_texts = [None] * len(pending)
+
+            next_pending = []
+            for local_idx, i in enumerate(pending):
+                parsed = _parse_one(retry_texts[local_idx], plans[i], answer=[i])
+                if parsed is None:
+                    next_pending.append(i)
+                else:
+                    results[i] = parsed
+            pending = next_pending
+            attempt += 1
+
+        final: List[Dict[str,Any]] = []
+        for i in range(N):
+            if results[i] is not None:
+                final.append(results[i])
+                continue
+            want_ids = [st.id for st in plans[i].subtasks]
+            fallback = {
+                "plan_score": 0.0,
+                "raw_text": (texts[i] or "")[:4000],
+                "subtask_gt": {sid: None for sid in want_ids},
+            }
+            final.append(fallback)
+        return final
+
+                
+                    
+                
+            
         
     def generate_sequences(self, prompts: DataProto, **kwargs) -> DataProto:
         """Generate sequences for a batch of prompts.
@@ -352,6 +540,8 @@ class vLLMAgentMultiStageWrapper:
         meta_info = prompts.meta_info
         stage = meta_info.get("stage","no_stage")
         output: DataProto = None
+        ids: torch.Tensor = prompts.batch["input_ids"]
+        batch_size = ids.size(0)
         
         timing_generate = {}
         with simple_timer("agent generation", timing_generate):
@@ -364,7 +554,6 @@ class vLLMAgentMultiStageWrapper:
                 output = self._generate_stage_review(prompts, **kwargs)
             else:
                 output = self._generate_no_stage(prompts, **kwargs)
-                
         output.meta_info["timing"] = timing_generate
         output = output.to("cpu")
         
@@ -458,7 +647,7 @@ class vLLMAgentMultiStageWrapper:
                 try:
                     non_tensor_batch[key] = np.array(value, dtype=object)
                 except Exception as e:
-                    print(f"Could not convert non_tensor_batch['{key}'] to numpy array. Error: {e}")
+                    self.logger.critical(f"Could not convert non_tensor_batch['{key}'] to numpy array. Error: {e}")
         
         gather_output = DataProto(batch=batch, non_tensor_batch=non_tensor_batch, meta_info=original_proto.meta_info)
         return gather_output
@@ -486,13 +675,14 @@ class vLLMAgentMultiStageWrapper:
             for prob, solu in zip(problems, solutions)
         ]
         
-        input_msgs = self.planner._build_prompt(sequence=qa_sequences)
+        input_msgs = [self.planner._build_prompt(sequence=seq) for seq in qa_sequences]
         
         processed_input = self.backend.apply_chat_template(input_msgs)
         process_proto = self.backend.prepare_dataproto(processed_input)
+        process_proto.non_tensor_batch = prompts.non_tensor_batch
         process_proto.meta_info.update(meta_info)
         
-        texts, gen_metas = self.backend.generate(input_msgs)
+        texts, gen_metas = self.backend.generate(input_msgs, sleep_after_inference=False)
         
         plans = []
 
@@ -503,7 +693,29 @@ class vLLMAgentMultiStageWrapper:
             except Exception:
                 plans.append(self.planner._coerce_to_plan(MINIMAL_FALLBACK_OBJ))
         
-        process_proto.non_tensor_batch["plan"] = [p for p in plans]
+        extra_infos = prompts.non_tensor_batch["extra_info"]
+        answers = []
+        for extra in extra_infos:
+            eval = extra.get("eval", {})
+            parsed_gt = eval.get("parsed_gt", None)
+            answers.append(parsed_gt)
+        labels = self.prepare_plan_labels(qa_sequences, plans, answers=answers)
+        
+        mock_msgs = [[{"role":"user","content":"How are you"}] for _ in range(batch_size)]
+        
+        _, _ = self.backend.generate(mock_msgs, sleep_after_inference=True)
+        
+        subtask_labels = np.empty(batch_size, dtype=object)
+        dynamic_info = np.empty(batch_size, dtype=object)
+        
+        for idx, label in enumerate(labels):
+            subtask_labels[idx] = label["subtask_gt"]
+            dynamic_info[idx] = label.copy()
+            dynamic_info[idx]["stage"] = "plan"
+        
+        process_proto.non_tensor_batch["plans"] = np.array([p for p in plans], dtype=object)
+        process_proto.non_tensor_batch["subtask_labels"] = subtask_labels
+        process_proto.non_tensor_batch["dynamic_info"] = dynamic_info
         
         final_proto = self._prepare_result_proto(process_proto, texts)
         return final_proto
@@ -511,9 +723,7 @@ class vLLMAgentMultiStageWrapper:
     
     def _generate_stage_subtask(self, prompts: DataProto, **kwargs):
         meta_info = prompts.meta_info
-        subtask_slot = meta_info["subtask_slot"]
-        assert subtask_slot > 0
-        
+
         idx: torch.Tensor = prompts.batch["input_ids"]  # (bs, prompt_length)
 
         batch_size = idx.size(0)
@@ -522,14 +732,20 @@ class vLLMAgentMultiStageWrapper:
 
         plans: np.ndarray[Plan] = non_tensor_batch["plans"]
         subtasks: np.ndarray[Subtask] = non_tensor_batch["subtasks"]
+        subtask_gt: np.ndarray[bool] = non_tensor_batch["subtask_gt"]
+        subtask_ids: np.ndarray[str] = non_tensor_batch["subtask_ids"]
+        assert subtasks.shape[0] == subtask_ids.shape[0]
+        for i in range(batch_size):
+            sub = subtasks[i]
+            sub_id = subtask_ids[i]
+            assert isinstance(sub, Subtask)
+            assert sub.id == sub_id
         
         # TODO Check subtask is ok
         
         extra_info: np.ndarray = non_tensor_batch.get("extra_info")
         if extra_info is None:
             raise ValueError("Extra info must be provided for qa info")
-            extra_info=[{} for _ in range(batch_size)]
-            self.logger.warning("Extra info of current batch is missing, which may cause unexpected results")
         
         problems: List[str] = [extra_info[i].get("problem","") for i in range(batch_size)]
         solutions: List[str] = [extra_info[i].get("solution","") for i in range(batch_size)]
@@ -543,6 +759,7 @@ class vLLMAgentMultiStageWrapper:
         
         processed_input = self.backend.apply_chat_template(input_msgs)
         process_proto = self.backend.prepare_dataproto(processed_input)
+        process_proto.non_tensor_batch = prompts.non_tensor_batch
         process_proto.meta_info.update(meta_info)
         
         reports = self.executor.execute_one(qa_sequences, plans, subtasks)
@@ -561,11 +778,30 @@ class vLLMAgentMultiStageWrapper:
                 elif msg.role == "tool":
                     txt_ids = self.tokenizer(msg.content, add_special_tokens=False).input_ids
                     mask_ids = [0 for _ in range(len(txt_ids))]
-            resp_ids[idx].append(txt_ids)
-            resp_mask_ids[idx].append(mask_ids)
+            resp_ids[idx].extend(txt_ids)
+            resp_mask_ids[idx].extend(mask_ids)
                 
+        subtask_ids = np.array([s.subtask_id for s in reports], dtype=str)
+        dynamic_info = np.empty(batch_size, dtype=object)
+        for i in range(batch_size):
+            sid = subtask_ids[i]
+            plan = plans[i]
+            subtask = subtasks[i]
+            report = reports[i]
+            gt = subtask_gt[i]
+            
+            dynamic_info[i] = {
+                "subtask_id": sid,
+                "plan": plan,
+                "subtask": subtask,
+                "report": report,
+                "subtask_gt": gt,
+                "stage":"subtask",
+            }
         
         process_proto.non_tensor_batch["reports"] = reports
+        process_proto.non_tensor_batch["subtask_ids"] = subtask_ids
+        process_proto.non_tensor_batch["dynamic_info"] = dynamic_info
         
         final_proto = self._prepare_result_proto(process_proto, resp_ids, resp_mask_ids)
         return final_proto
@@ -584,6 +820,9 @@ class vLLMAgentMultiStageWrapper:
 
         non_tensor_batch = prompts.non_tensor_batch
         
+        plans: np.ndarray[Plan] = non_tensor_batch["plans"]
+        reports: np.ndarray[ExecutionReport] = non_tensor_batch["execution_reports"]
+        
         extra_info: np.ndarray = non_tensor_batch.get("extra_info")
         if extra_info is None:
             raise ValueError("Extra info must be provided for qa info")
@@ -597,6 +836,35 @@ class vLLMAgentMultiStageWrapper:
             DEFAULT_SEQ_TEMPLATE.format(problem=prob, solution=solu)
             for prob, solu in zip(problems, solutions)
         ]
+        
+        plan_subtask_rollouts = [build_rollout_for_model(sequence=seq, plan=plan, report=report) 
+                                for seq, plan, report in zip(qa_sequences, plans, reports)]
+        
+        input_msgs = [[
+            {"role":"system","content":FINAL_SYSTEM_PROMPT},
+            {"role":"user", "content":FINAL_USER_PROMPT.format(
+                sequence = rollout,  
+            )}
+        ] for rollout in plan_subtask_rollouts]
+        
+        processed_input = self.backend.apply_chat_template(input_msgs)
+        process_proto = self.backend.prepare_dataproto(processed_input)
+        process_proto.non_tensor_batch = prompts.non_tensor_batch
+        process_proto.meta_info.update(meta_info)
+        
+        texts, gen_metas = self.backend.generate(input_msgs)
+        
+                
+        dynamic_info = np.empty(batch_size, dtype=object)
+        for i in range(batch_size):
+            dynamic_info[i] = {
+                "stage":"subtask",
+            }
+        process_proto.non_tensor_batch["dynamic_info"]=dynamic_info
+        final_proto = self._prepare_result_proto(process_proto, texts)
+
+        return final_proto
+        
     
     def _generate_no_stage(self, prompts: DataProto, **kwargs):
         idx: torch.Tensor = prompts.batch["input_ids"]  # (bs, prompt_length)
@@ -704,6 +972,7 @@ class vLLMAgentMultiStageWrapper:
 
         non_tensor_batch["plans"] = [plan.to_dict() for plan in plans]
         non_tensor_batch["subtask_executions"] = [report.to_dict() for report in reports]
+        non_tensor_batch["agent_info"]
 
         for key, value in non_tensor_batch.items():
             if not isinstance(value, np.ndarray):

@@ -164,6 +164,10 @@ actor_rollout_ref:
 
     max_num_subtasks: 8
 
+    max_num_plans: 2
+
+    max_num_reviews: 2
+
 # custom reward function definition
 custom_reward_function:
 
@@ -253,6 +257,8 @@ data:
   
 # config for the trainer
 trainer:
+
+  user_multi_stage: False
 
   # Whether to balance batch sizes across distributed workers
   balance_batch: True

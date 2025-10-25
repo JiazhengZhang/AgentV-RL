@@ -106,7 +106,7 @@ class VerificationSubtaskExecutor(SubtaskExecutor):
     
     def execute_one(self, sequences: List[str], plans: List[Plan], subtasks: List[Subtask], **kwargs) -> List[VerificationSubtaskReport]:
         input_msgs = []
-        for idx, (seq, subtask, plan) in enumerate(zip(sequences, subtasks, plan)):
+        for idx, (seq, subtask, plan) in enumerate(zip(sequences, subtasks, plans)):
             input_msgs.append(self._format_subtask_prompt(seq, plan, subtask))
         answers, metas = self.agent.generate(input_msgs, None, **kwargs)
         reports: List[VerificationSubtaskReport] = []

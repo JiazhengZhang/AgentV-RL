@@ -60,8 +60,11 @@ from verl.utils.metric import (
 from verl.utils.seqlen_balancing import get_seqlen_balanced_partitions, log_seqlen_unbalance
 from verl.utils.torch_functional import masked_mean
 from verl.utils.tracking import ValidationGenerationsLogger
+from verl.utils.common.agent_stage_cache import AgentRlStageCache
 
 from verl.workers.rollout.vllm_rollout.vllm_rollout_spmd_agent import vLLMAgentWrapper, vLLMAgentMultiStageWrapper
+
+from agentflow.utils.json_util import JsonUtil
 
 WorkerType = type[Worker]
 
@@ -346,6 +349,7 @@ class RayPPOTrainer:
         self.reward_fn = reward_fn
         self.val_reward_fn = val_reward_fn
 
+        self.use_multistage = self.config.trainer.user_multi_stage
         self.hybrid_engine = config.actor_rollout_ref.hybrid_engine
         assert self.hybrid_engine, "Currently, only support hybrid engine"
 
@@ -388,6 +392,7 @@ class RayPPOTrainer:
         self._create_dataloader(train_dataset, val_dataset, collate_fn, train_sampler)
         
         
+        
             
     def _init_wrapper(self):
         self.use_multiturn_wrapper: bool = self.config.actor_rollout_ref.extra.use_multiturn_wrapper
@@ -405,6 +410,10 @@ class RayPPOTrainer:
                 wg=self.actor_rollout_wg,
                 tokenizer=self.tokenizer,
                 agent_config_path=self.config.actor_rollout_ref.extra.agent_config_path,
+            )
+        if self.use_multistage:
+            self.stage_cache = AgentRlStageCache(
+                max_num_subtasks=self.config.actor_rollout_ref.extra.max_num_subtasks
             )
             
 
@@ -581,6 +590,10 @@ class RayPPOTrainer:
         """
         # TODO: we have to make sure the batch size is divisible by the dp size
         from verl.trainer.main_ppo import create_rl_dataset, create_rl_sampler
+        from verl.utils.dataset.agent_rl_dataset import StageExpandedRLHFDataset, multistage_collate_fn
+        from verl.utils.common.agent_rl_utils import MultiStagePlan
+        from verl.utils.sampler.agent_rl_sampler import FlatBatchSampler
+
 
         if train_dataset is None:
             train_dataset = create_rl_dataset(
@@ -590,25 +603,69 @@ class RayPPOTrainer:
             val_dataset = create_rl_dataset(
                 self.config.data.val_files, self.config.data, self.tokenizer, self.processor
             )
+        raw_train_set = train_dataset
+        train_batch_size = self.config.data.train_batch_size
+        if self.use_multistage:
+            schedule = [
+                    ("overall", 1),
+                    ("plan", self.config.actor_rollout_ref.extra.max_num_plans), 
+                    ("subtask", self.config.actor_rollout_ref.extra.max_num_subtasks), 
+                    ("review", self.config.actor_rollout_ref.extra.max_num_reviews)
+                ]
+        
+            g = torch.Generator()
+            perm = torch.randperm(len(raw_train_set), generator=g).tolist()
+            stage_plan = MultiStagePlan(
+                base_len=len(raw_train_set),
+                base_batch_size=train_batch_size,
+                schedule=schedule,
+                permuted_base_indices=perm,
+            )
+            
+            virtual_dataset = StageExpandedRLHFDataset(base_dataset=train_dataset, plan=stage_plan)
+            train_dataset = virtual_dataset
+        
+        
         self.train_dataset, self.val_dataset = train_dataset, val_dataset
 
         if train_sampler is None:
-            train_sampler = create_rl_sampler(self.config.data, self.train_dataset)
+            if self.use_multistage:
+                train_sampler = FlatBatchSampler(stage_plan)
+            else:
+                train_sampler = create_rl_sampler(self.config.data, self.train_dataset)
+        elif self.use_multistage:
+            train_sampler = FlatBatchSampler(stage_plan)
+            
         if collate_fn is None:
             from verl.utils.dataset.rl_dataset import collate_fn as default_collate_fn
-
-            collate_fn = default_collate_fn
+            
+            if self.use_multistage:
+                collate_fn = multistage_collate_fn
+            else:
+                collate_fn = default_collate_fn
+            val_collect_fn = default_collate_fn
+        elif self.use_multistage:
+            val_collect_fn = collate_fn
+            collate_fn = multistage_collate_fn
+        
 
         num_workers = self.config.data["dataloader_num_workers"]
-
-        self.train_dataloader = StatefulDataLoader(
-            dataset=self.train_dataset,
-            batch_size=self.config.data.get("gen_batch_size", self.config.data.train_batch_size),
-            num_workers=num_workers,
-            drop_last=True,
-            collate_fn=collate_fn,
-            sampler=train_sampler,
-        )
+        if self.use_multistage:
+            self.train_dataloader = StatefulDataLoader(
+                dataset=self.train_dataset,
+                num_workers=num_workers,
+                collate_fn=collate_fn,
+                batch_sampler=train_sampler
+            )
+        else:
+            self.train_dataloader = StatefulDataLoader(
+                dataset=self.train_dataset,
+                batch_size=self.config.data.get("gen_batch_size", self.config.data.train_batch_size),
+                num_workers=num_workers,
+                drop_last=True,
+                collate_fn=collate_fn,
+                sampler=train_sampler,
+            )
 
         val_batch_size = self.config.data.val_batch_size  # Prefer config value if set
         if val_batch_size is None:
@@ -620,7 +677,7 @@ class RayPPOTrainer:
             num_workers=num_workers,
             shuffle=self.config.data.get("validation_shuffle", True),
             drop_last=False,
-            collate_fn=collate_fn,
+            collate_fn=val_collect_fn,
         )
 
         assert len(self.train_dataloader) >= 1, "Train dataloader is empty!"
@@ -653,7 +710,7 @@ class RayPPOTrainer:
         """Dump rollout/validation samples as JSONL."""
         os.makedirs(dump_path, exist_ok=True)
         filename = os.path.join(dump_path, f"{self.global_steps}.jsonl")
-        agent_info = kwargs.get("agent_info", None)
+        agent_info = kwargs.get("agent_info", {})
 
         n = len(inputs)
         base_data = {
@@ -1126,13 +1183,7 @@ class RayPPOTrainer:
         )
         metrics.update(global_balance_stats)
         
-    def _check_data_loader(self):
-        for batch_dict in self.train_dataloader:
-            assert "extra_info" in batch_dict.keys()
-            assert isinstance(batch_dict["extra_info"],np.ndarray)
-        for batch_dict in self.val_dataloader:
-            assert "extra_info" in batch_dict.keys()
-            assert isinstance(batch_dict["extra_info"],np.ndarray)
+
 
     def fit(self):
         """
@@ -1174,8 +1225,6 @@ class RayPPOTrainer:
         self.global_steps += 1
         last_val_metrics = None
         self.max_steps_duration = 0
-
-        self._check_data_loader()
         
         self._init_wrapper()
         
@@ -1191,12 +1240,36 @@ class RayPPOTrainer:
                 )
                 with marked_timer("start_profile", timing_raw):
                     self._start_profiling(do_profile)
-
-                batch: DataProto = DataProto.from_single_dict(batch_dict)
-
+                    
+                if self.use_multistage:
+                    assert isinstance(batch_dict, dict)
+                    data: dict = batch_dict  
+                    meta_info = batch_dict["meta_info"]  
+                    batch_dict.pop("meta_info")
+                    base_idx = data["base_idx"]
+                    
+                    stage: str = meta_info["stage"]
+                    is_group_final: bool = meta_info["is_group_final"]
+                    
+                    assert stage in ("plan","subtask","review","overall"), "Stage must be one of plan, subtask, review, overall"
+                    cache_info = self.stage_cache.pop_batch(stage, meta_info, base_idx=base_idx)
+                    data.update(cache_info)
+                    batch: DataProto = DataProto.from_single_dict(data, meta_info = meta_info)
+                else:
+                    batch: DataProto = DataProto.from_single_dict(batch_dict)
+                assert "reward_model" in batch.non_tensor_batch
+                assert "data_source" in batch.non_tensor_batch
                 # pop those keys for generation
                 batch_keys_to_pop = ["input_ids", "attention_mask", "position_ids"]
-                non_tensor_batch_keys_to_pop = ["raw_prompt_ids","extra_info"]
+                non_tensor_batch_keys_to_pop = ["raw_prompt_ids","extra_info",]
+                
+                multi_stage_non_tensor_keys = ("subtasks","subtask_ids","subtask_gt",
+                "is_duplicate","plans","execution_reports")
+                
+                for mkey in multi_stage_non_tensor_keys:
+                    if mkey in batch.non_tensor_batch.keys():
+                        non_tensor_batch_keys_to_pop.append(mkey)
+                
                 if "multi_modal_data" in batch.non_tensor_batch:
                     non_tensor_batch_keys_to_pop.append("multi_modal_data")
                 if "raw_prompt" in batch.non_tensor_batch:
@@ -1221,6 +1294,7 @@ class RayPPOTrainer:
 
                 # pass global_steps to trace
                 gen_batch.meta_info["global_steps"] = self.global_steps
+                gen_batch.meta_info.update(meta_info)
                 gen_batch = gen_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
 
                 is_last_step = self.global_steps >= self.total_training_steps
@@ -1391,7 +1465,23 @@ class RayPPOTrainer:
                             actor_output = self.actor_rollout_wg.update_actor(batch)
                         actor_output_metrics = reduce_metrics(actor_output.meta_info["metrics"])
                         metrics.update(actor_output_metrics)
-
+                        
+                    if self.use_multistage:
+                        scores = batch.batch["token_level_scores"].sum(-1).cpu().tolist()
+                        reward_arr = np.array(scores,dtype=float)
+                        if stage == "plan":
+                            batch.non_tensor_batch["plan_rewards"]=reward_arr
+                        else:
+                            batch.non_tensor_batch["rewards"]=reward_arr
+                            # NOTE Here batch size is extended, 
+                        self.stage_cache.put_batch(stage, batch.non_tensor_batch, batch.meta_info)
+                        if is_group_final:
+                            self.stage_cache.clear()
+                    
+                    non_tensor_batch_keys_to_dump = (
+                        "stage", "plans", "subtasks", "subtask_gt", "subtask_ids","subtask_labels",
+                        "dynamic_info", "reports", "subtask_executions"
+                    )
                     # Log rollout generations if enabled
                     rollout_data_dir = self.config.trainer.get("rollout_data_dir", None)
                     if rollout_data_dir:
@@ -1399,10 +1489,18 @@ class RayPPOTrainer:
                             inputs = self.tokenizer.batch_decode(batch.batch["prompts"], skip_special_tokens=True)
                             outputs = self.tokenizer.batch_decode(batch.batch["responses"], skip_special_tokens=True)
                             scores = batch.batch["token_level_scores"].sum(-1).cpu().tolist()
-                            agent_info = {
-                                    "plans": batch.non_tensor_batch["plans"],
-                                    "subtask_executions": batch.non_tensor_batch["subtask_executions"],
-                                }
+                            agent_info = {}
+                            for nkey in non_tensor_batch_keys_to_dump:
+                                if nkey in batch.non_tensor_batch.keys():
+                                    value = batch.non_tensor_batch[nkey]
+                                    var_to_save = value
+                                    if isinstance(value, np.ndarray):
+                                        var_to_save = value.tolist()
+                                    agent_info[nkey] = var_to_save
+                            agent_info = JsonUtil.json_sanitize(agent_info)
+                            if not agent_info:
+                                agent_info = {}
+                            
                             self._dump_generations(
                                 inputs=inputs,
                                 outputs=outputs,

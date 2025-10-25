@@ -23,6 +23,8 @@ def parse_bool_choice(choice_str: str) -> str:
         return "2"
     else:
         return "None"
+    
+
 
 def compute_bool_reward(
     data_source: str,
@@ -61,9 +63,6 @@ def compute_bool_reward(
         else:
             reward = -1
             
-    bonus = 0
-    reward += bonus
-    
     return reward
     
 

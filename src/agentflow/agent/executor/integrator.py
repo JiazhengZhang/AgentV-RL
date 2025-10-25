@@ -51,90 +51,6 @@ def stats_and_has_fail(report: ExecutionReport) -> Tuple[Dict[str, int], bool]:
     return {"passed": passed, "failed": failed, "uncertain": uncertain}, (failed > 0 or uncertain > 0)
 
 
-def build_rollout_for_model_old(
-    *,
-    sequence: str,
-    plan: Plan,
-    report: ExecutionReport,
-    include_tool_traces: bool = True,
-    max_tool_chars: int = 1000
-) -> str:
-    ridx: Dict[str, VerificationSubtaskReport] = {
-        r.subtask_id: r for r in report.subtask_reports
-        if isinstance(r, VerificationSubtaskReport)
-    }
-
-    lines: List[str] = []
-    lines.append(f'<rollout sequence_id="{_esc(report.sequence_id)}">')
-    lines.append(f"  <sequence>{_esc(sequence)}</sequence>")
-    lines.append(f"  <problem>{_esc(plan.problem_brief)}</problem>")
-    lines.append(f"  <asked>{_esc(plan.asked_quantity)}</asked>")
-
-    if plan.assumptions_required:
-        lines.append("  <assumptions>")
-        for a in plan.assumptions_required:
-            lines.append(f"    <assumption>{_esc(a)}</assumption>")
-        lines.append("  </assumptions>")
-
-    if plan.meta:
-        lines.append(f"  <plan_meta>{_esc(_json_compact(plan.meta))}</plan_meta>")
-
-    lines.append("  <subtasks>")
-    for st in plan.subtasks:
-        st_inputs = _json_compact(st.inputs) if st.inputs else "{}"
-        st_expected = _json_compact(st.expected_produce) if st.expected_produce else "{}"
-        st_tool_hint = _json_compact(st.tool_hint) if st.tool_hint else "{}"
-
-        lines.append(
-            f'    <subtask id="{_esc(st.id)}" title="{_esc(st.title)}" category="{_esc(st.category)}">'
-        )
-        if st.rationale:
-            lines.append(f"      <rationale>{_esc(st.rationale)}</rationale>")
-        lines.append(f"      <inputs>{_esc(st_inputs)}</inputs>")
-        lines.append(f"      <expected>{_esc(st_expected)}</expected>")
-
-        rr = ridx.get(st.id)
-        if rr is None:
-            lines.append('      <result verdict="none" rounds="0" tool_calls="0">')
-            lines.append("        <verify></verify>")
-            lines.append("      </result>")
-        else:
-            verdict = "true" if rr.verdict is True else ("false" if rr.verdict is False else "none")
-            rounds_used = getattr(rr, "rounds_used", 0) or 0
-            tool_calls = len(rr.tool_traces) if getattr(rr, "tool_traces", None) else 0
-            # lines.append(
-            #     f'      <result verdict="{verdict}" rounds="{rounds_used}" tool_calls="{tool_calls}">'
-            # )
-            vtext = _soft_trunc(rr.verify_text or "", 2000)
-            lines.append(f"        <verify>{_esc(vtext)}</verify>")
-            lines.append("      </result>")
-
-            if include_tool_traces and getattr(rr, "tool_traces", None):
-                lines.append("      <tools>")
-                for tc in rr.tool_traces:
-                    name = getattr(tc, "tool_name", None) or getattr(tc, "name", None) or "tool"
-                    tool_call_content = _soft_trunc(tc.call.content,2000)
-                    raw = _json_compact(getattr(tc, "output", None) or getattr(tc, "result", None) or "")
-                    raw = _soft_trunc(raw, max_tool_chars)
-                    lines.append(f'        <tool name="{_esc(name)}"><call>{tool_call_content}</call>{_esc(raw)}</tool>')
-                lines.append("      </tools>")
-
-        # raw = getattr(rr, "raw_trace", "") if rr is not None else ""
-        raw = None
-        if raw:
-            lines.append(f"      <raw_trace>{_esc(_soft_trunc(str(raw), 2000))}</raw_trace>")
-
-        lines.append("    </subtask>")
-    lines.append("  </subtasks>")
-
-    passed = sum(1 for r in report.subtask_reports if isinstance(r, VerificationSubtaskReport) and r.verdict is True)
-    failed = sum(1 for r in report.subtask_reports if isinstance(r, VerificationSubtaskReport) and r.verdict is False)
-    uncertain = sum(1 for r in report.subtask_reports if isinstance(r, VerificationSubtaskReport) and r.verdict is None)
-    lines.append('  <summary>')
-    lines.append(f'    <counts passed="{passed}" failed="{failed}" uncertain="{uncertain}"/>')
-    lines.append("  </summary>")
-    lines.append("</rollout>")
-    return "\n".join(lines)
 
 def build_rollout_for_model(
     *,
@@ -177,9 +93,9 @@ def build_rollout_for_model(
         return [str(x)]
 
     plan_dict: Dict[str, Any] = {
-        "problem_brief": getattr(plan, "problem_brief", "") or "",
-        "asked_quantity": getattr(plan, "asked_quantity", "") or "",
-        "assumptions_required": _coerce_list(getattr(plan, "assumptions_required", [])),
+        "problem_brief": plan.problem_brief,
+        "asked_quantity": plan.asked_quantity,
+        "assumptions_required": _coerce_list(plan.assumptions_required),
     }
     if getattr(plan, "reasoning", None):
         plan_dict["reasoning"] = plan.reasoning
@@ -188,12 +104,12 @@ def build_rollout_for_model(
             plan_dict["meta"] = plan.meta
 
     st_items: List[Dict[str, Any]] = []
-    for st in getattr(plan, "subtasks", []) or []:
+    for st in plan.subtasks:
         item: Dict[str, Any] = {
-            "id": getattr(st, "id", ""),
-            "title": getattr(st, "title", ""),
-            "rationale": getattr(st, "rationale", "") or "",
-            "category": getattr(st, "category", "") or "",
+            "id": st.id,
+            "title": st.title,
+            "rationale": st.rationale or "",
+            "category": st.category or "",
         }
         if getattr(st, "tool_hint", None):
             if st.tool_hint:
@@ -208,8 +124,8 @@ def build_rollout_for_model(
     out_lines.append("</plan>")
 
     id2report: Dict = {}
-    for r in getattr(report, "subtask_reports", []) or []:
-        sid = getattr(r, "subtask_id", None)
+    for r in report.subtask_reports or []:
+        sid = r.subtask_id
         if sid:
             id2report[sid] = r
 
@@ -260,10 +176,10 @@ def build_rollout_for_model(
         return segment
 
     out_lines.append("<subtasks>")
-    for st in getattr(plan, "subtasks", []) or []:
-        sid = getattr(st, "id", "")
-        cat = getattr(st, "category", "") or ""
-        title = getattr(st, "title", "") or ""
+    for st in plan.subtasks or []:
+        sid = st.id
+        cat = st.category
+        title = st.title
 
         rep = id2report.get(sid)
         raw_trace = getattr(rep, "raw_trace", "") if rep is not None else ""
