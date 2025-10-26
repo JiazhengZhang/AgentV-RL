@@ -3,7 +3,7 @@ set -x
 export WANDB_MODE=offline
 export WANDB_DIR=/root/workspace/agent-rm/wandb
 
-export CUDA_VISIBLE_DEVICES=2,3,4,5
+export CUDA_VISIBLE_DEVICES=4,5,6,7
 export RAY_TEMP_DIR=/mnt/data/ray_temp
 export NCCL_TIMEOUT=3600  
 export HYDRA_FULL_ERROR=1
@@ -18,8 +18,8 @@ echo "PYTHONPATH = $PYTHONPATH"
 
 
 
-PROJECT_NAME=rm_grpo_multistage_1025 # project name
-EXP_NAME=grpo-2000-qwen3-4b-test-3 # exp name
+PROJECT_NAME=rm_grpo_multistage_1026 # project name
+EXP_NAME=grpo-2000-qwen3-4b-test-1 # exp name
 
 ACTOR_MODEL_PATH=/root/workspace/agent-rm/models/qwen3-4b
 
@@ -40,7 +40,7 @@ n_gpus_per_node=4
 nnodes=1
 
 MAX_NUM_PLANS=1
-MAX_NUM_SUBTASKS=1
+MAX_NUM_SUBTASKS=6
 MAX_NUM_REVIEWS=2
 
 
@@ -59,7 +59,7 @@ python3 -m verl.trainer.main_ppo --config-path=$CONFIG_DIR --config-name=$CONFIG
     data.val_files="$test_files" \
     data.train_batch_size=4 \
     data.max_prompt_length=2400 \
-    data.max_response_length=2800 \
+    data.max_response_length=4200 \
     data.filter_overlong_prompts=True \
     data.truncation='left' \
     actor_rollout_ref.model.path=$ACTOR_MODEL_PATH \
@@ -91,7 +91,7 @@ python3 -m verl.trainer.main_ppo --config-path=$CONFIG_DIR --config-name=$CONFIG
     trainer.val_before_train=False \
     trainer.nnodes=$nnodes \
     trainer.save_freq=40 \
-    trainer.test_freq=1 \
+    trainer.test_freq=18 \
     trainer.rollout_data_dir=${SAVE_BASE_DIR}/${PROJECT_DIR}/rollout_data  \
     trainer.validation_data_dir=${SAVE_BASE_DIR}/${PROJECT_DIR}/validation_data \
     trainer.verl_dir=$SRC_DIR \

@@ -1067,10 +1067,22 @@ class RayPPOTrainer:
         inputs = self.tokenizer.batch_decode(batch.batch["prompts"], skip_special_tokens=True)
         outputs = self.tokenizer.batch_decode(batch.batch["responses"], skip_special_tokens=True)
         scores = batch.batch["token_level_scores"].sum(-1).cpu().tolist()
-        agent_info = {
-                "plans": batch.non_tensor_batch["plans"],
-                "subtask_executions": batch.non_tensor_batch["subtask_executions"],
-            }
+        non_tensor_batch_keys_to_dump = (
+            "stage", "plans", "subtasks", "subtask_gt", "subtask_ids","subtask_labels",
+            "dynamic_info", "reports", "subtask_executions"
+        )
+        agent_info = {}
+        for nkey in non_tensor_batch_keys_to_dump:
+            if nkey in batch.non_tensor_batch.keys():
+                value = batch.non_tensor_batch[nkey]
+                var_to_save = value
+                if isinstance(value, np.ndarray):
+                    var_to_save = value.tolist()
+                agent_info[nkey] = var_to_save
+        agent_info = JsonUtil.json_sanitize(agent_info)
+        if not agent_info:
+            agent_info = {}
+            
         self._dump_generations(
             inputs=inputs,
             outputs=outputs,

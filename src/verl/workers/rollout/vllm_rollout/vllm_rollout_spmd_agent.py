@@ -972,7 +972,6 @@ class vLLMAgentMultiStageWrapper:
 
         non_tensor_batch["plans"] = [plan.to_dict() for plan in plans]
         non_tensor_batch["subtask_executions"] = [report.to_dict() for report in reports]
-        non_tensor_batch["agent_info"]
 
         for key, value in non_tensor_batch.items():
             if not isinstance(value, np.ndarray):
