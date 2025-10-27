@@ -778,8 +778,8 @@ class vLLMAgentMultiStageWrapper:
                 elif msg.role == "tool":
                     txt_ids = self.tokenizer(msg.content, add_special_tokens=False).input_ids
                     mask_ids = [0 for _ in range(len(txt_ids))]
-            resp_ids[idx].extend(txt_ids)
-            resp_mask_ids[idx].extend(mask_ids)
+                resp_ids[idx].extend(txt_ids)
+                resp_mask_ids[idx].extend(mask_ids)
                 
         subtask_ids = np.array([s.subtask_id for s in reports], dtype=str)
         dynamic_info = np.empty(batch_size, dtype=object)
