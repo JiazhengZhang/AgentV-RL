@@ -607,7 +607,7 @@ class RayPPOTrainer:
         train_batch_size = self.config.data.train_batch_size
         if self.use_multistage:
             schedule = [
-                    ("overall", 1),
+                    # ("overall", 1),
                     ("plan", self.config.actor_rollout_ref.extra.max_num_plans), 
                     ("subtask", self.config.actor_rollout_ref.extra.max_num_subtasks), 
                     ("review", self.config.actor_rollout_ref.extra.max_num_reviews)
@@ -1261,6 +1261,7 @@ class RayPPOTrainer:
                     base_idx = data["base_idx"]
                     
                     stage: str = meta_info["stage"]
+                    print(f"Stage: {stage}")
                     is_group_final: bool = meta_info["is_group_final"]
                     
                     assert stage in ("plan","subtask","review","overall"), "Stage must be one of plan, subtask, review, overall"
@@ -1269,8 +1270,9 @@ class RayPPOTrainer:
                     batch: DataProto = DataProto.from_single_dict(data, meta_info = meta_info)
                 else:
                     batch: DataProto = DataProto.from_single_dict(batch_dict)
-                assert "reward_model" in batch.non_tensor_batch
-                assert "data_source" in batch.non_tensor_batch
+
+                
+                
                 # pop those keys for generation
                 batch_keys_to_pop = ["input_ids", "attention_mask", "position_ids"]
                 non_tensor_batch_keys_to_pop = ["raw_prompt_ids","extra_info",]
@@ -1364,7 +1366,6 @@ class RayPPOTrainer:
 
                     # compute global_valid tokens
                     batch.meta_info["global_token_num"] = torch.sum(batch.batch["attention_mask"], dim=-1).tolist()
-
                     with marked_timer("reward", timing_raw, color="yellow"):
                         # compute reward model score
                         if self.use_rm:
@@ -1491,7 +1492,7 @@ class RayPPOTrainer:
                             self.stage_cache.clear()
                     
                     non_tensor_batch_keys_to_dump = (
-                        "stage", "plans", "subtasks", "subtask_gt", "subtask_ids","subtask_labels",
+                        "reward_model", "stage", "plans", "subtasks", "subtask_gt", "subtask_ids","subtask_labels",
                         "dynamic_info", "reports", "subtask_executions"
                     )
                     # Log rollout generations if enabled

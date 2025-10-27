@@ -858,7 +858,7 @@ class vLLMAgentMultiStageWrapper:
         dynamic_info = np.empty(batch_size, dtype=object)
         for i in range(batch_size):
             dynamic_info[i] = {
-                "stage":"subtask",
+                "stage":"review",
             }
         process_proto.non_tensor_batch["dynamic_info"]=dynamic_info
         final_proto = self._prepare_result_proto(process_proto, texts)

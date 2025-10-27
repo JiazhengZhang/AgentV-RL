@@ -55,7 +55,7 @@ class StageExpandedRLHFDataset(Dataset):
         base_idx = meta["base_idx"]    
         row  = self.base[base_idx]            
 
-        out: Dict[str, Any] = row
+        out: Dict[str, Any] = dict(row)
 
         out["index"] = row.get("index", meta["base_idx"])
         out["base_idx"] = base_idx

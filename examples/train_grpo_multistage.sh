@@ -1,9 +1,9 @@
 set -x
 
-export WANDB_MODE=offline
+# export WANDB_MODE=offline
 export WANDB_DIR=/root/workspace/agent-rm/wandb
 
-export CUDA_VISIBLE_DEVICES=4,5,6,7
+export CUDA_VISIBLE_DEVICES=2,4,5,6
 export RAY_TEMP_DIR=/mnt/data/ray_temp
 export NCCL_TIMEOUT=3600  
 export HYDRA_FULL_ERROR=1
@@ -18,10 +18,10 @@ echo "PYTHONPATH = $PYTHONPATH"
 
 
 
-PROJECT_NAME=rm_grpo_multistage_1026 # project name
-EXP_NAME=grpo-2000-qwen3-4b-test-1 # exp name
+PROJECT_NAME=rm_grpo_multistage_1027 # project name
+EXP_NAME=grpo-multistage-qwen2.5-7b-initial-2 # exp name
 
-ACTOR_MODEL_PATH=/root/workspace/agent-rm/models/qwen3-4b
+ACTOR_MODEL_PATH=/root/workspace/agent-rm/models/Qwen-2.5-7B-Instruct
 
 SAVE_BASE_DIR=/root/workspace/agent-rm/checkpoints
 PROJECT_DIR=${PROJECT_NAME}/${EXP_NAME}
@@ -40,7 +40,7 @@ n_gpus_per_node=4
 nnodes=1
 
 MAX_NUM_PLANS=1
-MAX_NUM_SUBTASKS=6
+MAX_NUM_SUBTASKS=5
 MAX_NUM_REVIEWS=2
 
 
@@ -57,7 +57,7 @@ python3 -m verl.trainer.main_ppo --config-path=$CONFIG_DIR --config-name=$CONFIG
     algorithm.adv_estimator=grpo \
     data.train_files="$train_files" \
     data.val_files="$test_files" \
-    data.train_batch_size=4 \
+    data.train_batch_size=16 \
     data.max_prompt_length=2400 \
     data.max_response_length=4200 \
     data.filter_overlong_prompts=True \
@@ -67,7 +67,7 @@ python3 -m verl.trainer.main_ppo --config-path=$CONFIG_DIR --config-name=$CONFIG
     actor_rollout_ref.actor.ppo_mini_batch_size=1 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.actor.use_kl_loss=False \
-    actor_rollout_ref.actor.ulysses_sequence_parallel_size=1 \
+    actor_rollout_ref.actor.ulysses_sequence_parallel_size=2 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.rollout.n=${ROLLOUT_N} \
@@ -90,8 +90,8 @@ python3 -m verl.trainer.main_ppo --config-path=$CONFIG_DIR --config-name=$CONFIG
     trainer.n_gpus_per_node=$n_gpus_per_node \
     trainer.val_before_train=False \
     trainer.nnodes=$nnodes \
-    trainer.save_freq=40 \
-    trainer.test_freq=18 \
+    trainer.save_freq=100 \
+    trainer.test_freq=100 \
     trainer.rollout_data_dir=${SAVE_BASE_DIR}/${PROJECT_DIR}/rollout_data  \
     trainer.validation_data_dir=${SAVE_BASE_DIR}/${PROJECT_DIR}/validation_data \
     trainer.verl_dir=$SRC_DIR \

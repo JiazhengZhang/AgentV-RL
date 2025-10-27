@@ -28,7 +28,7 @@ def _parse_correctness_reward(text: str, ground_truth: str):
         parsed_ground_truth = parse_bool_choice(ground_truth)
         if parsed_ground_truth == "None":
             reward = 0
-        if choice == parsed_ground_truth:
+        elif choice == parsed_ground_truth:
             reward = 1
         else:
             reward = -1
@@ -59,6 +59,7 @@ def compute_agentic_reward(
     if data_source != "rm_bool":
         raise NotImplementedError(f"Reward fordatasource of {data_source} is not defined")
     
+    assert ground_truth is not None, "GT cannot be None"
     
     stage = extra_info.get("stage",None)
     if not stage:
@@ -70,7 +71,7 @@ def compute_agentic_reward(
             )
     elif stage == "plan":
         plan_score = extra_info.get("plan_score", 0)
-        schemas = JsonUtil.parse_json("data_source")
+        schemas = JsonUtil.parse_json(solution_str)
         if schemas:
             format_score = 0.2
         else:
@@ -79,7 +80,7 @@ def compute_agentic_reward(
         
     elif stage == "subtask":
         subtask_gt = extra_info.get("subtask_gt","None")
-        score = _parse_correctness_reward(solution_str,subtask_gt)
+        score = _parse_correctness_reward(solution_str, subtask_gt)
     elif stage == "review":
         score = _parse_correctness_reward(solution_str, ground_truth)
     else:

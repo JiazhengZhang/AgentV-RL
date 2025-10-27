@@ -126,7 +126,7 @@ class VerlWgBackend(ChatTemplateDefaultsMixin, CanGenerate, SupportChatTemplate)
             max_length=self.max_prompt_length,
             pad_token_id=self.tokenizer.pad_token_id,
             left_pad=True,
-            truncation="left",
+            truncation="right",
         )
         position_ids = compute_position_id_with_mask(attention_mask)
 
