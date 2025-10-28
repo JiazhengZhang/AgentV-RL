@@ -18,8 +18,8 @@ echo "PYTHONPATH = $PYTHONPATH"
 
 
 
-PROJECT_NAME=rm_grpo_multistage_1027 # project name
-EXP_NAME=grpo-multistage-qwen2.5-7b-initial-2 # exp name
+PROJECT_NAME=rm_grpo_multistage_1029 # project name
+EXP_NAME=grpo-multistage-qwen2.5-7b-initial-1 # exp name
 
 ACTOR_MODEL_PATH=/root/workspace/agent-rm/models/Qwen-2.5-7B-Instruct
 
@@ -29,7 +29,7 @@ PROJECT_DIR=${PROJECT_NAME}/${EXP_NAME}
 train_files=/root/workspace/agent-rm/datasets/polaris/rl-1011/rl_1011-3000.train.parquet
 test_files=/root/workspace/agent-rm/datasets/polaris/rl-1011/rl_1011-3000.val.parquet
 
-ROLLOUT_N=4
+ROLLOUT_N=5
 
 CONFIG_DIR=/root/workspace/agent-rm/Agent-Verifier/src/verl/config/RL
 CONFIG_NAME=grpo_verifier # verl config name
