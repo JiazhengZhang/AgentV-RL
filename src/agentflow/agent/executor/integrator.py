@@ -180,13 +180,14 @@ def build_rollout_for_model(
         sid = st.id
         cat = st.category
         title = st.title
+        rat = st.rationale
 
         rep = id2report.get(sid)
         raw_trace = getattr(rep, "raw_trace", "") if rep is not None else ""
         clipped = _smart_tail_with_priority(raw_trace, max_chars_per_subtask)
         clipped = _indent_block(clipped)
 
-        out_lines.append(f'  <subtask id="{_esc_attr(sid)}" category="{_esc_attr(cat)}" title="{_esc_attr(title)}">')
+        out_lines.append(f'  <subtask id="{_esc_attr(sid)}" title="{_esc_attr(title)}" rational="{_esc_attr(rat)}">')
         out_lines.append(clipped)
         out_lines.append("  </subtask>")
     out_lines.append("</subtasks>")

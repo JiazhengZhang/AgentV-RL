@@ -13,63 +13,49 @@ from agentflow.core.interfaces import CanGenerate
 
 RETRY_FORMAT_SUFFIX = "Output a standard json-format object only"
 
-MINIMAL_FALLBACK_OBJ = {
-    "problem_statement": "",
-    "target_quantity": "",
-    "required_assumptions": [],
-    "verification_units": [
-        {"id":"u0","title":"intent check","justification":"WHAT vs RESULT",
-         "category":"intent_validation","inputs":{"from":["Problem","Solution"]},
-         "tool_spec":{"python":False,"search":False,"max_calls":1},
-         "expected_output":{"type":"boolean","schema":{"meaning":"match"}},
-         "stop_on_failure": True},
-        {"id":"u1","title":"premise verification","justification":"illegal premise?",
-         "category":"assumption_audit","inputs":{"from":["Problem","Solution"]},
-         "tool_spec":{"python":False,"search":False,"max_calls":1},
-         "expected_output":{"type":"boolean","schema":{"meaning":"ok"}},
-         "stop_on_failure": True}
-    ],
-    "termination_conditions": ["target_quantity mismatch confirmed"]
-}
+
 
 FIXED_SELF_SOLVE_SUBTASK = {
-    "id": "self_solve_and_verify",
+    "id": "Judge_by_Self_Solve",
     "title": "Self-solve then compare with the solution",
-    "justification": "Independently solve the question without referencing solution; then compare with the solution.",
-    "category": "self_solve_compare",
+    "justification": "Independently solve the question without referencing solution; then compare the given answer with self-solve solution.",
+    "category": "self_solve",
     "inputs": {"from": ["Problem", "Solution"]}, 
     "tool_spec": {"python": True, "search": False, "max_calls": 5},
     "expected_output": {
         "type": "boolean",
         "schema": {
-            "meaning": "Determines whether the solution is correct.",
-            "must_output": {
-                "self_result": "Independent final result (value/expression + unit/type)", 
-                "compare": "A comparison showing differences or proof of equivalence with the provided solution.",
-                "binding": "optional: python check / key equation chain"
-            },
-            "tolerance": "1e-6"
+            "meaning": "Determines whether the given answer is equal to self-solve solution.",
         }
     },
     "stop_on_failure": False
 }
 
 FIXED_OVERALL_SUBTASK = {
-    "id": "Overall_Quality_Judgement",
-    "title": "Overall_Quality_Judgement",
-    "justification": "Directly judge correctness using only Problem and Solution (final answer included).",
+    "id": "Overall_Correctness",
+    "title": "Overall_Correctness",
+    "justification": "Analyze the full reasoning process of the original answer to judge whether the given answer is correct",
     "category": "final_consistency",
     "inputs": {"from": ["Problem", "Solution"]},
     "tool_spec": {"python": True, "search": False, "max_calls": 5},
     "expected_output": {
         "type": "boolean",
         "schema": {
-            "meaning": "Determines whether the final solution answer is correct.",
-            "must_extract_final_answer": True,
-            "must_state_reason": True
+            "meaning": "Determines whether the final solution answer and the process are correct.",
         }
     },
     "stop_on_failure": False
+}
+
+MINIMAL_FALLBACK_OBJ = {
+    "problem_statement": "",
+    "target_quantity": "",
+    "required_assumptions": [],
+    "verification_units": [
+        FIXED_OVERALL_SUBTASK,
+        FIXED_SELF_SOLVE_SUBTASK,
+    ],
+    "termination_conditions": ["target_quantity mismatch confirmed"]
 }
 
 

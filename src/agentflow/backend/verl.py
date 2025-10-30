@@ -7,6 +7,7 @@ from typing import List, Tuple, Dict, Any, Union, Optional, Protocol, Sequence
 from collections import defaultdict
 from logging import Logger
 
+import torch
 from vllm import LLM, SamplingParams
 from transformers import PreTrainedTokenizer
 
@@ -108,27 +109,37 @@ class VerlWgBackend(ChatTemplateDefaultsMixin, CanGenerate, SupportChatTemplate)
         return batch, keep_mask
     
     def prepare_dataproto(self, prompts: List[str], **kwargs) -> DataProto:
-        model_inputs = self.tokenizer(
-            prompts,
-            add_special_tokens=False,
-            padding=True,
-            truncation=True,
-            max_length=self.max_prompt_length,
-            return_attention_mask=True,
-            return_tensors="pt"
-        )
+        raw_input_ids = []
+        raw_atten_masks = []
+        raw_position_ids = []
+        for prompt in prompts:
+            model_inputs = self.tokenizer(
+                prompt,
+                add_special_tokens=False,
+                return_attention_mask=True,
+                return_tensors="pt"
+            )
 
-        input_ids = model_inputs.pop("input_ids")
-        attention_mask = model_inputs.pop("attention_mask")
-        input_ids, attention_mask = verl_F.postprocess_data(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            max_length=self.max_prompt_length,
-            pad_token_id=self.tokenizer.pad_token_id,
-            left_pad=True,
-            truncation="right",
-        )
-        position_ids = compute_position_id_with_mask(attention_mask)
+            single_input_ids = model_inputs.pop("input_ids")
+            single_attention_mask = model_inputs.pop("attention_mask")
+        
+            input_ids, attention_mask = verl_F.postprocess_data(
+                input_ids=single_input_ids,
+                attention_mask=single_attention_mask,
+                max_length=self.max_prompt_length,
+                pad_token_id=self.tokenizer.pad_token_id,
+                left_pad=True,
+                truncation="right",
+            )
+            position_ids = compute_position_id_with_mask(attention_mask)
+            
+            raw_input_ids.append(input_ids[0])
+            raw_atten_masks.append(attention_mask[0])
+            raw_position_ids.append(position_ids[0])
+        
+        input_ids = torch.stack(raw_input_ids, dim=0)
+        attention_mask = torch.stack(raw_atten_masks, dim=0)
+        position_ids = torch.stack(raw_position_ids, dim=0)
 
         tensor_dict = {
             "input_ids": input_ids,
@@ -179,45 +190,8 @@ class VerlWgBackend(ChatTemplateDefaultsMixin, CanGenerate, SupportChatTemplate)
 
         if self.tokenizer.pad_token_id is None:
             self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
-
-        model_inputs = self.tokenizer(
-            padded_prompts,
-            add_special_tokens=False,
-            padding=True,
-            truncation=True,
-            max_length=self.max_prompt_length,
-            return_attention_mask=True,
-            return_tensors="pt"
-        )
-
-        input_ids = model_inputs.pop("input_ids")
-        attention_mask = model_inputs.pop("attention_mask")
-        input_ids, attention_mask = verl_F.postprocess_data(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            max_length=self.max_prompt_length,
-            pad_token_id=self.tokenizer.pad_token_id,
-            left_pad=True,
-            truncation="left",
-        )
-        position_ids = compute_position_id_with_mask(attention_mask)
-
-        tensor_dict = {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "position_ids": position_ids,
-        }
         
-        input_proto_meta = {
-            "eos_token_id": self.tokenizer.eos_token_id, 
-            "pad_token_id": self.tokenizer.pad_token_id,
-            "sleep_after_inference": sleep_after_inference,
-        }
-        
-        input_proto = DataProto.from_single_dict(
-            tensor_dict,
-            meta_info=input_proto_meta,
-        )
+        input_proto = self.prepare_dataproto(padded_prompts)
 
         output_proto = self.wg.generate_sequences(input_proto, **kwargs)
 

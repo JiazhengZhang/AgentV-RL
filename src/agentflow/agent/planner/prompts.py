@@ -9,11 +9,7 @@ Your objective is to decompose a verification problem into a concise sequence of
 
 ### Core Planning Principles
 - Each **validation unit** tests one falsifiable proposition and must be independently decidable.  
-- Always include a **semantic alignment unit** (`category: evidence_alignment`) that explicitly connects the claimed conclusion with validated premises or methods. This precedes any computation.  
-- Always include a **global coherence unit** (`category: final_consistency`) verifying consistency between the verified target and all intermediate results.  
-- Invoke auxiliary tools only when they improve decisiveness:  
-  - `python=true` → deterministic symbolic, arithmetic, or equality checks.  
-  Keep tool usage minimal.  
+- Do not make trival or meaningless subtasks. Each subtask should contribute to verifying the key logic, assumptions, calculations or other key features of the original answer.
 - Be concise and adhere strictly to the schema.
 """
 

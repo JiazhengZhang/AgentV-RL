@@ -100,6 +100,9 @@ def _pre_process_inputs(pad_token_id, prompt_token_ids: torch.Tensor) -> list[in
 FINAL_USER_PROMPT="""
 The question, answer and the evaluation rollout:
 {sequence}
+
+Begin your review and final verdict:
+
 """
 
 
@@ -158,12 +161,13 @@ def _build_plan_analyze_prompt(seq: str, plan: Plan, answer: str) -> List[Dict[s
 
     
     system_prompt = """You are a strict verifier for a plan that decomposes a verification task
-(judging whether an answer to a question is correct) into boolean subtasks.
+(judging whether an assistant's answer to a question is correct) into boolean subtasks.
 
 Your mission:
-1) Assess whether the plan meaningfully helps finish the verification task.
-2) Provide a scalar score in [0, 10].
-3) Give the ground truth (True/False) for each subtask ID exactly as given.
+1) Compare the standard answer with the assistant's answer to determine whether the assistant's answer is also correct as a global ground truth.
+2) Assess whether the plan meaningfully helps finish the verification task (That is, the plan can provided sufficient evidence to reach the global ground truth).
+3) Provide a scalar score in [0, 10].
+4) Give the ground truth (True/False) for each subtask ID exactly as given.
 
 SCORING RUBRIC (0–10):
 - Relevance to the main question (0–2): Subtasks align with what the question asks; no off-topic checks.
@@ -173,13 +177,14 @@ SCORING RUBRIC (0–10):
 - Clarity & minimal redundancy (0–1): Subtasks are well-scoped, non-duplicative, and avoid unnecessary overlap.
 
 INTERPRETATION RULES:
+- For subtasks involving overall judgement, the ground truth of the subtask should allign with the determined global ground truth.
 - Judge each subtask by its own claim: return True if the claim is correct given the problem; False otherwise.
 - Prefer strict correctness over speculation; if the subtask’s condition cannot be supported by the prompt’s facts, mark False.
 - Do not invent new subtask IDs; output booleans for exactly the provided IDs.
 - Be consistent: the overall score should reflect the same standards used to judge subtasks.
 
 OUTPUT FORMAT:
-<your reasoning trace>
+<your brief reasoning trace>
 ```json
 {
   "plan_score": <float 0..10>,
@@ -200,7 +205,7 @@ OUTPUT FORMAT:
     
     user_prompt = """The original Question and answer: 
 {seq}
-The correct answer to the question:
+The standard answer to the question:
 {answer}
 The plan of the assistant:
 {plan_info}
@@ -395,6 +400,7 @@ class vLLMAgentMultiStageWrapper:
             wg=wg,
             tokenizer=tokenizer,
             logger=self.logger,
+            max_prompt_length=self.config.prompt_length,
         )
         self.remote_backend = OpenaiBackend(config=ag_config, logger=self.logger)
         self.backend.set_chat_template_defaults(enable_thinking=False)
@@ -842,7 +848,7 @@ class vLLMAgentMultiStageWrapper:
             for prob, solu in zip(problems, solutions)
         ]
         
-        plan_subtask_rollouts = [build_rollout_for_model(sequence=seq, plan=plan, report=report) 
+        plan_subtask_rollouts = [build_rollout_for_model(sequence=seq, plan=plan, report=report,max_chars_per_subtask=2048) 
                                 for seq, plan, report in zip(qa_sequences, plans, reports)]
         
         input_msgs = [[

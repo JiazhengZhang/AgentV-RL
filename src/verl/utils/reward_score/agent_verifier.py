@@ -22,25 +22,25 @@ def _parse_correctness_reward(text: str, ground_truth: str):
         
     reward = 0
     if final_answer is None:
-        reward = -1
+        reward = -2
     else:
         choice = parse_bool_choice(final_answer)
         parsed_ground_truth = parse_bool_choice(ground_truth)
         if parsed_ground_truth == "None":
             reward = 0
         elif choice == parsed_ground_truth:
-            reward = 1
-            # if parsed_ground_truth == "1":
-            #     reward = 1
-            # else:
-            #     reward = 1.5
+            # reward = 1
+            if parsed_ground_truth == "1":
+                reward = 1
+            else:
+                reward = 1.5
             
         else:
-            reward = -1
-            # if parsed_ground_truth == "1":
-            #     reward = -1
-            # else:
-            #     reward = -1.5
+            # reward = -1
+            if parsed_ground_truth == "1":
+                reward = -1
+            else:
+                reward = -1.5
     return reward
 
 def compute_agentic_reward(
@@ -85,14 +85,14 @@ def compute_agentic_reward(
             format_score = 0.2
         else:
             format_score = 0
-        score = format_score + plan_score
+        score = (format_score + plan_score - 0.5) * 2
         
     elif stage == "subtask":
         subtask_gt = extra_info.get("subtask_gt","None")
         score = _parse_correctness_reward(solution_str, subtask_gt)
         global_score = _parse_correctness_reward(solution_str, ground_truth)
         if global_score > 0:
-            score = score + 0.5 * global_score
+            score = score + 0.2 * global_score
     elif stage == "review":
         score = _parse_correctness_reward(solution_str, ground_truth)
     else:

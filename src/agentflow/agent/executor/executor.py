@@ -21,7 +21,7 @@ from .prompts import _DEFAULT_SYSTEM, _USER_TPL
 
 @dataclass
 class ExecutorConfig:
-    max_rounds_per_subtask: int = 3
+    max_rounds_per_subtask: int = 4
     default_tool_max_calls: int = 2
     system_prompt: str = _DEFAULT_SYSTEM
     helper_code_snippets: List[str] = field(default_factory=list)
