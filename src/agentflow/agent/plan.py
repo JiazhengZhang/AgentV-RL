@@ -263,7 +263,7 @@ Notes:
                 full_msgs[indice].extend(curr_context.all_round_messages())
                 
                 end_flag = self._review_stage_gate(curr_context)
-                if not end_flag:
+                if not end_flag and (subtask_rounds < self.max_rounds - 2):
                     full_msgs[indice].append(Message("user",self.DEFAULT_USER_STAGE_SUBTASK_MIDDLE))
                     next_active_idxs.append(indice)
                     

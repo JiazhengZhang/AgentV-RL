@@ -77,7 +77,7 @@ class JudgeWorker:
             torch.cuda.set_device(0)
 
         backend = VllmChoiceLogitsBackend(config)
-        backend.set_chat_template_defaults(enable_thinking=False)
+        backend.set_chat_template_defaults(enable_thinking=True)
         self.backend = backend
         reg = ToolRegistry()
         reg.register(PythonExecutionTool())

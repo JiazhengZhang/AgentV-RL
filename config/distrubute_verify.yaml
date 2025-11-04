@@ -23,7 +23,7 @@ backend:                                # 推理后端与采样参数
       - "</next>"
     use_tqdm: false
     enable_sleep_mode: true
-    max_model_len: 20000
+    max_model_len: 30000
     max_num_batched_tokens: 21000
     max_num_seqs: 512
     enable_prefix_caching: true
