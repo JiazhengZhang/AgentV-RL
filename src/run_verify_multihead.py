@@ -285,7 +285,11 @@ def main():
         wid = pick_worker(inflight, num_workers)
         obj = workers[wid].score_batch.remote(payload)
         inflight.append((wid, obj, blocks))
-        logger.info(f"Submitted batch to worker#{wid}, size={len(payload)}")
+        idxs = []
+        for block in blocks:
+            if "idx" in block.keys():
+                idxs.append(block.get("idx"))
+        logger.info(f"Submitted batch to worker#{wid}, size={len(payload)}, idxs={idxs}")
         return True
 
     inflight: List[Tuple[int, "ray.ObjectRef", List[Dict[str, Any]]]] = []  # (wid, obj, blocks)
@@ -319,7 +323,11 @@ def main():
             wid = len(inflight) % num_workers
             obj = workers[wid].score_batch.remote(payload)
             inflight.append((wid, obj, blocks))
-            logger.info(f"Submitted batch to worker#{wid}, size={len(payload)}")
+            idxs = []
+            for block in blocks:
+                if "idx" in block.keys():
+                    idxs.append(block.get("idx"))
+            logger.info(f"Submitted batch to worker#{wid}, size={len(payload)}, idxs={idxs}")
 
         while inflight:
             ready, rest = ray.wait([obj for (_, obj, _) in inflight], num_returns=1, timeout=8)

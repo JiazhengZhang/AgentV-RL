@@ -38,7 +38,6 @@ class Message:
             msgs.append(Message(
                 role=msg["role"],
                 content=msg["content"],
-                dict_data=msg,
             ))
         return msgs
     
