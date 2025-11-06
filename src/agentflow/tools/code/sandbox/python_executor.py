@@ -75,7 +75,7 @@ class PythonExecutor:
             return []
         outs: List[ExecutionResult] = [None] * len(plans)
         ctx = get_context("spawn")
-        with ProcessPool(max_workers=min(self.max_workers, len(plans)), context=ctx, max_tasks=2) as pool:
+        with ProcessPool(max_workers=min(self.max_workers, len(plans)), context=ctx, max_tasks=128) as pool:
             fn_base = partial(_run_in_sandbox,
                          config=self.config,
                          headers=self._headers+self._helper_code,

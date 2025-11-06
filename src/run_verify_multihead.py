@@ -73,6 +73,12 @@ class JudgeWorker:
         os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
         os.environ.setdefault("OMP_NUM_THREADS", "1")
         os.environ.setdefault("MKL_NUM_THREADS", "1")
+        import multiprocessing as mp
+        try:
+            if mp.get_start_method(allow_none=True) != "spawn":
+                mp.set_start_method("spawn", force=True)
+        except RuntimeError:
+            pass
         if torch.cuda.is_available():
             torch.cuda.set_device(0)
 
