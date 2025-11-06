@@ -374,17 +374,29 @@ Requirements:
         
 class BackwardVerifyAgent:
     
-    DEFAULT_SYSTEM="""You are a backward verifier. 
-Given a question and a proposed answer, check step by step if it can be fully supported by the problem statement when reasoning backward.
+    DEFAULT_SYSTEM="""You are a **Backward Verifier**, responsible for verifying whether a proposed solution is fully justified by the given problem statement through *backward reasoning*.
+
+Verification Objective:
+- Starting from the final solution (answer), reason step by step backward to identify the minimal set of premises required.
+- Check whether each premise is explicitly or implicitly supported by the problem statement.
 
 Rules:
-- You MUST first produce <goal>, <backtrace>, <evidence>, <conflicts>, <checklist> in this order, then give exactly one <answer>.
-- Only output <answer>false</answer> if you explicitly present at least one <gap .../> in <evidence> or a <conflict .../> in <conflicts>, with a quoted reference showing why the match failed.
-- Output <answer>true</answer> if all necessary premises are matched OR are reasonably inferable by elementary arithmetic/definitions/common-sense for this task domain.
-- Minor omissions that do not affect the conclusion (e.g., obvious algebra steps, universally known definitions) DO NOT count as gaps.
-- Respond in XML-like tags only. Always include <answer> at the end (after other tags).
-Tags you may use: <goal>, <backtrace>, <evidence>, <conflicts>, <step>, <checklist>, <answer>.
-"""
+1. You MUST output the following tags strictly in this order: <goal>, <backtrace>, <evidence>, <conflicts>, <checklist>, and finally <answer>.
+2. In <goal>, extract the key conclusions or claims made in the proposed solution.
+3. In <backtrace>, derive the minimal logical premises that must hold true for each claim, reasoning backward from the conclusion.
+4. In <evidence>, match each premise with textual or logical evidence from the problem.  
+   - Use <ok premise="..."><quote>...</quote></ok> if supported.  
+   - Use <gap premise="...">reason for missing or unsupported premise</gap> if no valid support exists.
+5. In <conflicts>, explicitly note any contradictions between the proposed solution and the problem statement using <conflict target="..."><quote>...</quote></conflict>.
+6. In <checklist>, summarize the verification result:
+   - <coverage>percentage of premises supported</coverage>
+   - <has_gap>true|false</has_gap>
+   - <has_conflict>true|false</has_conflict>
+7. You must output <answer>true</answer> only if:
+   - All necessary premises are directly supported or trivially inferable from the problem (e.g., through basic arithmetic, definitions, or domain-level common sense).
+8. Output <answer>false</answer> only if at least one <gap> or <conflict> is present with explicit quoted justification.
+9. Minor omitted steps that are universally accepted (e.g., algebraic simplifications, definition recall) DO NOT count as gaps.
+10. The response must use only the specified XML-like tags, with exactly one <answer> at the end."""
 
     DEFAULT_USER_INIT="""<problem>
 {question}
@@ -393,23 +405,23 @@ Tags you may use: <goal>, <backtrace>, <evidence>, <conflicts>, <step>, <checkli
 {answer}
 </proposed_answer>
 
-You should use tags in the following rules.
+Follow the verification protocol below:
 
-<goal>Extract the final claims from the proposed answer.</goal>
-<backtrace>For each claim, list minimal necessary premises to make it true.</backtrace>
+<goal>Identify the main conclusions from the proposed solution.</goal>
+<backtrace>For each conclusion, infer backward the minimal necessary premises that must hold for it to be valid.</backtrace>
 <evidence>
-  For each premise, first try to match it to the problem or previously derived steps.
-  If matched, write <ok premise="..."><quote>...</quote></ok> quoting the exact support.
-  If a concrete match fails, write <gap premise="...">why it fails</gap>.
+  For each premise:
+  - If supported by the problem statement, record <ok premise="..."><quote>...</quote></ok>.
+  - If not supported or contradicted, record <gap premise="...">explanation of failure</gap>.
 </evidence>
-<conflicts>List any contradictions as <conflict target="..."><quote>...</quote></conflict>.</conflicts>
+<conflicts>List explicit contradictions as <conflict target="..."><quote>...</quote></conflict>.</conflicts>
 <checklist>
-  <coverage>OK-premises / total-premises as an integer percentage</coverage>
+  <coverage>ratio of supported premises to total premises (integer percentage)</coverage>
   <has_gap>true|false</has_gap>
   <has_conflict>true|false</has_conflict>
 </checklist>
 
-Output your final decision as <answer>true|false</answer> only once at the end."""
+Conclude with <answer>true|false</answer> to indicate whether the proposed solution is fully justified by backward reasoning."""
     
     def __init__(
         self,
