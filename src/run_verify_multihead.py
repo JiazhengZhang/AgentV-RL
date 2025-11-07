@@ -67,18 +67,12 @@ def _to_bool(text: str) -> Optional[bool]:
         return False
     return None
 
-@ray.remote(num_gpus=1, max_restarts=2, max_task_retries=1)
+@ray.remote(num_gpus=1, max_restarts=8, max_task_retries=8)
 class JudgeWorker:
     def __init__(self, config: Dict[str, Any], system_prompt: str, user_prompt: str):
         os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
         os.environ.setdefault("OMP_NUM_THREADS", "1")
         os.environ.setdefault("MKL_NUM_THREADS", "1")
-        import multiprocessing as mp
-        try:
-            if mp.get_start_method(allow_none=True) != "spawn":
-                mp.set_start_method("spawn", force=True)
-        except RuntimeError:
-            pass
         if torch.cuda.is_available():
             torch.cuda.set_device(0)
 
@@ -344,8 +338,10 @@ def main():
             obj_done = ready[0]
             i = next(k for k, (curr_wid, o, _) in enumerate(inflight) if o == obj_done)
             wid, _, blocks = inflight.pop(i)
-            
-            items = ray.get(obj_done)  # List[{"scores":..., "metas":..., "count":...}]
+            try:
+                items = ray.get(obj_done)  # List[{"scores":..., "metas":..., "count":...}]
+            except Exception as e:
+                logger.error(f"Worker#{wid} failed while getting result. Error: {e}")
             for blk, item in zip(blocks, items):
                 L = int(item["count"])
                 scores = item["scores"]
