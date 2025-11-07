@@ -5,6 +5,7 @@ import math
 
 from vllm import LLM, SamplingParams
 import torch
+import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from agentflow.utils.log_util import get_logger
@@ -182,65 +183,50 @@ class VllmChoiceLogitsBackend(ChatTemplateDefaultsMixin, CanGenerate, CanChoiceP
             labels_tensor = torch.tensor(padded_labels, dtype=torch.long, device=device)
             attention_mask_tensor = torch.tensor(attention_masks, dtype=torch.long, device=device)
 
-            outputs = self.lm(input_ids=input_ids_tensor,
-                                        attention_mask=attention_mask_tensor,
-                                        labels=labels_tensor,
-                                        )
+            with torch.amp.autocast('cuda', dtype=torch.bfloat16):
+                outputs = self.lm(input_ids=input_ids_tensor,
+                                attention_mask=attention_mask_tensor,
+                                labels=labels_tensor,
+                                )
 
             valid_counts = (labels_tensor != -100).sum(dim=1).to(torch.float32) 
             valid_counts = torch.clamp(valid_counts, min=1.0)
 
-            avg_nll = outputs.loss  
+            logits = outputs.logits 
+            logits_shifted = logits[:, :-1, :]  
+            shifted_labels = labels_tensor[:, 1:].clone()
+            mask = shifted_labels != -100  
 
-            with torch.inference_mode():
-                # logits = self.lm(input_ids=input_ids_tensor,
-                #                             attention_mask=attention_mask_tensor,
-                #                             use_cache=False).logits  
-                logits = outputs.logits 
-                log_probs = torch.log_softmax(logits[:, :-1, :], dim=-1)  
-                shifted_labels = labels_tensor[:, 1:].clone()
-                mask = shifted_labels != -100  
-
-                token_log_probs = log_probs.gather(
-                    dim=-1,
-                    index=shifted_labels.masked_fill(~mask, 0).unsqueeze(-1)
-                ).squeeze(-1)
-                token_log_probs = token_log_probs.masked_fill(~mask, 0.0)
-                total_logprob_per_sample = token_log_probs.sum(dim=1) 
-
+            if mask.any():
+                flat_logits  = logits_shifted[mask]   # [N_mask, V]
+                flat_targets = shifted_labels[mask]   # [N_mask]
+                per_tok_nll  = F.cross_entropy(flat_logits, flat_targets, reduction="none")  # [N_mask]
+                B = logits.size(0)
+                per_sample_nll = torch.zeros(B, device=logits.device, dtype=per_tok_nll.dtype)
+                counts = mask.sum(dim=1)    # [B]
+                idxs = torch.cumsum(counts, dim=0)
+                start = 0
+                for b in range(B):
+                    end = idxs[b].item()
+                    if end > start:
+                        per_sample_nll[b] = per_tok_nll[start:end].sum()
+                    start = end
+            else:
+                per_sample_nll = torch.zeros(logits.size(0), device=logits.device)
+                    
+            total_logprob_per_sample = -per_sample_nll
             if normalize == "avg":
                 total_logprob_per_sample = total_logprob_per_sample / valid_counts
 
             probs = torch.softmax(total_logprob_per_sample, dim=0)  
             all_group_probs.append(probs.detach().cpu().tolist())
-            del outputs, shifted_labels, mask,token_log_probs,total_logprob_per_sample
-            del input_ids_tensor, labels_tensor, attention_mask_tensor, probs
-            torch.cuda.empty_cache()
-
-
+            
+        torch.cuda.empty_cache()
         return all_group_probs
     
     def get_vllm_instance(self) -> LLM:
         return self.vllm
     
-    @torch.no_grad()
-    def choice_probs_old(self, prefixes: Sequence[str], choices: Sequence[Sequence[str]]) -> List[List[float]]:
-
-        outs: List[List[float]] = []
-        for prefix, chs in zip(prefixes, choices):
-            ids = self.tokenizer(prefix, return_tensors="pt").to(self.lm.device)
-            logits = self.lm(**ids).logits[0, -1, :]        
-            probs  = torch.softmax(logits, -1)
-
-            row=[]
-            for c in chs:
-                toks = self.tokenizer(c, add_special_tokens=False).input_ids
-                tok_id = toks[0]
-                row.append(float(probs[tok_id].item()))
-            s = sum(row) or 1e-12
-            norm = [x/s for x in row]
-            outs.append(norm)
-        return outs
 
 
 

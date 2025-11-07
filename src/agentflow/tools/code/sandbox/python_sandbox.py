@@ -57,7 +57,7 @@ def _ast_guard_imports(text: str, allowed: Optional[set]) -> None:
 @dataclass
 class SandboxConfig:
     time_limit_s: float = 5.0
-    mem_limit_mb: int = 128
+    mem_limit_mb: int = 8
     allowed_imports: Optional[List[str]] = field(default_factory=lambda: sorted(ALLOWED_IMPORTS_DEFAULT))
     capture_stdout: bool = True
     seed: Optional[int] = 0

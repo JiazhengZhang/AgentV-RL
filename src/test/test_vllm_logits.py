@@ -1,7 +1,7 @@
 import sys
 import os
 os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
-
+os.environ["CUDA_VISIBLE_DEVICES"]="3"
 ROOT_DIR = os.path.abspath(os.path.join(__file__, "..",".."))  
 sys.path.insert(0, ROOT_DIR)     
 
