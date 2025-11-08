@@ -34,6 +34,7 @@ def free_vllm_mem(backend, level: int = 1):
         yield
     finally:
         if llm:
+            torch.cuda.empty_cache()
             llm.wake_up(tags = ["weights","kv_cache"])
     
         

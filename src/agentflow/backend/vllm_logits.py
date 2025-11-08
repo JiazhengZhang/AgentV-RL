@@ -220,8 +220,11 @@ class VllmChoiceLogitsBackend(ChatTemplateDefaultsMixin, CanGenerate, CanChoiceP
 
             probs = torch.softmax(total_logprob_per_sample, dim=0)  
             all_group_probs.append(probs.detach().cpu().tolist())
+            del outputs, logits, logits_shifted, shifted_labels, mask
+            del input_ids_tensor, labels_tensor, attention_mask_tensor
+            del per_sample_nll, total_logprob_per_sample, probs
+            torch.cuda.empty_cache()
             
-        torch.cuda.empty_cache()
         return all_group_probs
     
     def get_vllm_instance(self) -> LLM:

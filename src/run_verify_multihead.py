@@ -92,6 +92,145 @@ class JudgeWorker:
         )
         
         self.scorer = BoolLogitsScorer(backend)
+        
+    def score_batch(self, payload: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        flat_questions: List[str] = []
+        flat_answers: List[str] = []
+        index_map: List[Tuple[int, int]] = []  # (payload_idx, local_idx_in_payload)
+        payload_lengths: List[int] = []
+
+        for p_idx, item in enumerate(payload):
+            qs: List[str] = item["questions"]
+            ans: List[str] = item["answers"]
+            assert len(qs) == len(ans)
+            payload_lengths.append(len(qs))
+            for i, (q, a) in enumerate(zip(qs, ans)):
+                index_map.append((p_idx, i))
+                flat_questions.append(q)
+                flat_answers.append(a)
+
+        N = len(flat_questions)
+        if N == 0:
+            return [{"scores": [], "metas": [], "count": 0} for _ in payload]
+
+        msgs, gen_metas = self.agent.generate(flat_questions, flat_answers)
+
+        forward_verdicts: List[Optional[bool]] = []
+        for msg in msgs:
+            if not msg:
+                forward_verdicts.append(None)
+                continue
+            ans_tags = find_tags(msg[-1].content, ["answer"])
+            if not ans_tags:
+                forward_verdicts.append(False)
+                continue
+            forward_verdicts.append(_to_bool(ans_tags[-1].body))
+
+        if isinstance(self.backend, SupportVllm):
+            with free_vllm_mem(self.backend):
+                forward_scores, _ = self.agent.score(msgs, self.scorer)
+        else:
+            forward_scores, _ = self.agent.score(msgs, self.scorer)
+
+        final_scores: List[float] = list(forward_scores)
+        final_verdicts: List[Optional[bool]] = list(forward_verdicts)
+        extras: List[Dict[str, Any]] = []
+        backward_samples: List[int] = []
+        
+        for idx, (fmsg, fscore, verdict) in enumerate(zip(msgs, forward_scores, forward_verdicts)):
+            tool_counts = 0
+            for message in fmsg:
+                message.dict_data = None
+                if message.role == "tool":
+                    tool_counts += 1
+
+            if not verdict:
+                forward_scores[idx] = 0
+                final_scores[idx] = 0
+                backward_samples.append(idx)
+            else:
+                backward_samples.append(idx)
+
+            extras.append({
+                "forward":  {"tool_counter": tool_counts, "process": fmsg, "score": fscore, "verdict": verdict},
+                "backward": {},
+                "verdict": verdict,
+                "score": fscore,
+            })
+
+        if backward_samples:
+            backward_questions = [flat_questions[i] for i in backward_samples]
+            backward_answers   = [flat_answers[i] for i in backward_samples]
+
+            b_msgs, bgen_metas = self.backward_agent.generate(backward_questions, backward_answers)
+
+            backward_verdicts: List[Optional[bool]] = []
+            for bmsg in b_msgs:
+                if not bmsg:
+                    backward_verdicts.append(None)
+                    continue
+                ans_tags = find_tags(bmsg[-1].content, ["answer"])
+                if not ans_tags:
+                    backward_verdicts.append(None)
+                    continue
+                backward_verdicts.append(_to_bool(ans_tags[-1].body))
+
+            if isinstance(self.backend, SupportVllm):
+                with free_vllm_mem(self.backend):
+                    backward_scores, _ = self.backward_agent.score(b_msgs, self.scorer)
+            else:
+                backward_scores, _ = self.backward_agent.score(b_msgs, self.scorer)
+
+            for local_ind, (flat_idx, bmsg, bscore, bverdict) in enumerate(zip(backward_samples, b_msgs, backward_scores, backward_verdicts)):
+                forward_score   = forward_scores[flat_idx]
+                forward_verdict = forward_verdicts[flat_idx]
+                
+                if not bverdict:
+                    backward_scores[local_ind] = 0
+                    bscore = 0
+
+                final_scores[flat_idx] = (forward_score + bscore) / 2
+
+                if (forward_verdict is True and bverdict is True):
+                    final_verdicts[flat_idx] = True
+                else:
+                    final_verdicts[flat_idx] = False
+
+                tool_counts = 0
+                for message in bmsg:
+                    message.dict_data = None
+                    if message.role == "tool":
+                        tool_counts += 1
+
+                extras[flat_idx]["verdict"]  = final_verdicts[flat_idx]
+                extras[flat_idx]["score"] = final_scores[flat_idx]
+                extras[flat_idx]["backward"] = {
+                    "tool_counter": tool_counts,
+                    "process": bmsg,
+                    "score": bscore,
+                    "verdict": bverdict,
+                }
+
+        out: List[Dict[str, Any]] = []
+        cursor = 0
+        for p_idx, count in enumerate(payload_lengths):
+            if count == 0:
+                out.append({"scores": [], "metas": [], "count": 0})
+                continue
+
+            sl_scores   = final_scores[cursor: cursor + count]
+            sl_verdicts = final_verdicts[cursor: cursor + count]
+            sl_extras   = extras[cursor: cursor + count]
+
+            metas = []
+            for local_id, (score, verdict, e) in enumerate(zip(sl_scores, sl_verdicts, sl_extras)):
+                metas.append({"score": score, "verdict": verdict, "id": local_id, "extra": e})
+            metas = JsonUtil.json_sanitize(metas)
+
+            out.append({"scores": sl_scores, "metas": metas, "count": count})
+            cursor += count
+
+        return out
 
     def score_batch(self, payload: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         out: List[Dict[str, Any]] = []
