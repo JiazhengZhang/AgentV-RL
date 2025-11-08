@@ -338,10 +338,9 @@ def main():
             obj_done = ready[0]
             i = next(k for k, (curr_wid, o, _) in enumerate(inflight) if o == obj_done)
             wid, _, blocks = inflight.pop(i)
-            try:
-                items = ray.get(obj_done)  # List[{"scores":..., "metas":..., "count":...}]
-            except Exception as e:
-                logger.error(f"Worker#{wid} failed while getting result. Error: {e}")
+
+            items = ray.get(obj_done)  # List[{"scores":..., "metas":..., "count":...}]
+
             for blk, item in zip(blocks, items):
                 L = int(item["count"])
                 scores = item["scores"]
