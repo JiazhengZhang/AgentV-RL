@@ -62,6 +62,7 @@ from verl.utils.torch_functional import masked_mean
 from verl.utils.tracking import ValidationGenerationsLogger
 from verl.utils.common.agent_stage_cache import AgentRlStageCache
 
+from verl.workers.rollout.vllm_rollout.vllm_rollout_spmd_multiturn import vllmMultiturnWrapper
 from verl.workers.rollout.vllm_rollout.vllm_rollout_spmd_agent import vLLMAgentWrapper, vLLMAgentMultiStageWrapper
 
 from agentflow.utils.json_util import JsonUtil
@@ -397,7 +398,7 @@ class RayPPOTrainer:
     def _init_wrapper(self):
         self.use_multiturn_wrapper: bool = self.config.actor_rollout_ref.extra.use_multiturn_wrapper
         if self.use_multiturn_wrapper:
-            self.wg_wrapper = vLLMAgentMultiStageWrapper(
+            self.wg_wrapper = vllmMultiturnWrapper(
                 self.config.actor_rollout_ref.rollout,
                 wg=self.actor_rollout_wg,
                 tokenizer=self.tokenizer,
@@ -593,6 +594,7 @@ class RayPPOTrainer:
         from verl.utils.dataset.agent_rl_dataset import StageExpandedRLHFDataset, multistage_collate_fn
         from verl.utils.common.agent_rl_utils import MultiStagePlan
         from verl.utils.sampler.agent_rl_sampler import FlatBatchSampler
+        from verl.utils.dataset.rl_dataset import collate_fn as default_collate_fn 
 
 
         if train_dataset is None:
@@ -635,9 +637,8 @@ class RayPPOTrainer:
                 train_sampler = create_rl_sampler(self.config.data, self.train_dataset)
         elif self.use_multistage:
             train_sampler = FlatBatchSampler(stage_plan)
-            
+
         if collate_fn is None:
-            from verl.utils.dataset.rl_dataset import collate_fn as default_collate_fn
             
             if self.use_multistage:
                 collate_fn = multistage_collate_fn
@@ -647,6 +648,8 @@ class RayPPOTrainer:
         elif self.use_multistage:
             val_collect_fn = collate_fn
             collate_fn = multistage_collate_fn
+        else:
+            val_collect_fn = default_collate_fn
         
 
         num_workers = self.config.data["dataloader_num_workers"]
@@ -1270,6 +1273,7 @@ class RayPPOTrainer:
                     batch: DataProto = DataProto.from_single_dict(data, meta_info = meta_info)
                 else:
                     batch: DataProto = DataProto.from_single_dict(batch_dict)
+                    meta_info = {}
 
                 
                 
@@ -1519,7 +1523,7 @@ class RayPPOTrainer:
                                 outputs=outputs,
                                 scores=scores,
                                 reward_extra_infos_dict=reward_extra_infos_dict,
-                                dump_path=self.config.trainer.default_local_dir,
+                                dump_path=self.config.trainer.rollout_data_dir,
                                 agent_info=agent_info,
                             )
 

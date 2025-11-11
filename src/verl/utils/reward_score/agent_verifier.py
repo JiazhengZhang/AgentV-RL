@@ -63,12 +63,7 @@ def compute_agentic_reward(
     assert ground_truth is not None, "GT cannot be None"
     extra_info = extra_info or {}
 
-    score = compute_bool_reward(
-            data_source=data_source,
-            solution_str=solution_str,
-            ground_truth=ground_truth,
-            extra_info=extra_info,
-        )
+    score = _parse_correctness_reward(solution_str, ground_truth)
     
     return score
 

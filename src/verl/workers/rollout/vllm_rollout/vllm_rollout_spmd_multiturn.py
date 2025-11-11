@@ -102,7 +102,7 @@ def _to_bool(v: Any) -> Optional[bool]:
         return False
     return None
 
-class VllmMultiturnWrapper:
+class vllmMultiturnWrapper:
     def __init__(
         self,
         config,
@@ -321,6 +321,7 @@ class VllmMultiturnWrapper:
                     "resp_ids": str(response_ids_list[i]),
                     "resp_mask": str(response_mask_list[i]),
                 }
+            process_proto.non_tensor_batch["dynamic_info"]=dynamic_info
 
             self.logger.info("Multiturn generation finished")
             gather_output = self._prepare_result_proto(process_proto, response_ids_list, response_mask_list)

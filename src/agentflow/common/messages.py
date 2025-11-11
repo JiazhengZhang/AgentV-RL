@@ -19,9 +19,7 @@ class Message:
         """
         if self.dict_data:
             return self.dict_data
-        else:
-            self.dict_data = {"role":self.role,"content":self.content}
-        return self.dict_data
+        return {"role":self.role,"content":self.content}
     
     @classmethod
     def from_dicts(cls, messages: List[Dict[str,str]]) ->List[Message]:

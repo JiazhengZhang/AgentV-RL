@@ -106,7 +106,7 @@ actor_rollout_ref:
     top_p: 0.9
     prompt_length: ${data.max_prompt_length}  # not use for opensource
     response_length: ${data.max_response_length}
-    max_tokens: 1024
+    max_tokens: 4096
     calculate_log_probs: False
     # for vllm rollout
     dtype: bfloat16 # should align with FSDP
