@@ -22,28 +22,57 @@ def _parse_correctness_reward(text: str, ground_truth: str):
         
     reward = 0
     if final_answer is None:
-        reward = -2
+        reward = -1
     else:
         choice = parse_bool_choice(final_answer)
         parsed_ground_truth = parse_bool_choice(ground_truth)
         if parsed_ground_truth == "None":
             reward = 0
         elif choice == parsed_ground_truth:
-            # reward = 1
-            if parsed_ground_truth == "1":
-                reward = 1
-            else:
-                reward = 1.5
+            reward = 1
             
         else:
-            # reward = -1
-            if parsed_ground_truth == "1":
-                reward = -1
-            else:
-                reward = -1.5
+            reward = -1
     return reward
 
 def compute_agentic_reward(
+    data_source: str,
+    solution_str: str,
+    ground_truth: str,
+    extra_info: Dict[str,Any] = None,
+) -> float:
+    """Compute the score for a given solution based on the data source.
+
+    Args:
+        data_source (str): The source dataset identifier which determines the scoring method.
+        solution_str (str): The solution string to be evaluated.
+        ground_truth (str): The ground truth answer for comparison.
+        extra_info (dict, optional): Additional information that might be needed for scoring. Defaults to None.
+    
+    Returns:
+        float: The computed score as a floating point number. If the result is a dictionary,
+               it returns the dictionary instead.
+
+    Raises:
+        NotImplementedError: If the reward function is not implemented for the given data source.
+    """
+
+    if data_source != "rm_bool":
+        raise NotImplementedError(f"Reward fordatasource of {data_source} is not defined")
+    
+    assert ground_truth is not None, "GT cannot be None"
+    extra_info = extra_info or {}
+
+    score = compute_bool_reward(
+            data_source=data_source,
+            solution_str=solution_str,
+            ground_truth=ground_truth,
+            extra_info=extra_info,
+        )
+    
+    return score
+
+def compute_agentic_reward_multistage(
     data_source: str,
     solution_str: str,
     ground_truth: str,

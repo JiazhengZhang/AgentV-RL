@@ -22,6 +22,7 @@ from agentflow.utils.json_util import JsonUtil
 from agentflow.utils.log_util import get_logger
 from agentflow.utils.tag_util import find_tags
 from agentflow.utils.vllm import free_vllm_mem, SupportVllm
+from agentflow.utils.cuda import wait_device
 
 
 logger = get_logger(name = __name__)
@@ -189,7 +190,7 @@ class JudgeWorker:
                     backward_scores[local_ind] = 0
                     bscore = 0
 
-                final_scores[flat_idx] = (forward_score + bscore) / 2
+                final_scores[flat_idx] = (forward_score * 0.7 + bscore * 0.3) 
 
                 if (forward_verdict is True and bverdict is True):
                     final_verdicts[flat_idx] = True
@@ -258,6 +259,7 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 def main():
+    wait_device()
     import multiprocessing as mp
     if mp.get_start_method(allow_none=True) != "spawn":
         mp.set_start_method("spawn", force=True)

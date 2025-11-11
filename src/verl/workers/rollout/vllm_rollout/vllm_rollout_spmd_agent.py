@@ -97,6 +97,9 @@ def _pre_process_inputs(pad_token_id, prompt_token_ids: torch.Tensor) -> list[in
 # Output ONLY: <audit>...</audit><answer>...</answer>. Lowercase only. No extra text.
 # """
 
+
+# NOTE: Implementations here are some methods that do not work, Only for reference
+
 FINAL_USER_PROMPT="""
 The question, answer and the evaluation rollout:
 {sequence}
@@ -156,6 +159,8 @@ def _to_bool(v: Any) -> Optional[bool]:
     if s in ("false"):  
         return False
     return None
+
+
 
 def _build_plan_analyze_prompt(seq: str, plan: Plan, answer: str) -> List[Dict[str, str]]:
 

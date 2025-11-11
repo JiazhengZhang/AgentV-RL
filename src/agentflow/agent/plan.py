@@ -82,8 +82,7 @@ def _to_bool(text: str) -> Optional[bool]:
 class MultiturnPlanSubtaskAgent:
     
     DEFAULT_SYSTEM="""You are a Verifier agent performing multi-turn verification of a math problem’s solution.
-Your mission: determine whether the given solution is correct. Always be strict, skeptical, and evidence-driven.
-Keep responses concise. Follow the exact XML tag requirements.
+Your mission: determine whether the given solution is correct. 
 
 You must finish the job in three stages:
 
@@ -95,18 +94,7 @@ Execute the planned verification steps one by one in multiple turns.
 
 ## Stage C: Final Review & Verdict
 Review all prior analyses. Provide a final boolean verdict indicating whether the original solution correctly solves the question.
-
-General rules (VERY IMPORTANT):
-- XML tags must be exact and well-formed. Do not invent new tags.
-- Stage B is the ONLY stage where Python may be used. If you use Python in a turn, output ONLY:
-<python>
-imports...
-code...
-</python>
-  (No extra text in that turn. Avoid input(), OS commands, file I/O, network, and infinite loops.)
-- When a single step is finished (no Python in that turn), output <step/> on its own line.
-- When all steps are done, output <end_of_analysis/> on its own line.
-- In Stage C, output two tags only: <review>...</review> and <answer>true|false</answer>."""
+"""
     
     DEFAULT_USER_INIT = """Stage A: Task Analysis & Extraction
 
@@ -118,52 +106,29 @@ code...
 
 In this stage, given the question and the solution above, you are required to:
 
-1) Extract ALL variables, numerical values, units, and explicit/implicit constraints used in the question OR the solution.
-2) Provide a breakdown of the original question: what is being asked, which parts map to which variables/constraints, and the target quantity.
-3) Provide a breakdown of the original solution: the approach/plan, assumptions, how variables/constraints are applied, and key calculations/steps.
-4) Based on the above, list each verification step you will check in subsequent stages (numbered).
-5) Provide a preliminary judgment: “likely correct”, “likely incorrect”, or “undetermined”, with a brief reason.
-
-Your output must follow this exact format:
-
-<vars>...</vars>
-<constraints>...</constraints>
-<question_breakdown>...</question_breakdown>
-<solution_breakdown>...</solution_breakdown>
-<verification_steps>
-  <step id="1">...</step>
-  <step id="2">...</step>
-  ...
-</verification_steps>
-<preliminary_judgment>...</preliminary_judgment>
+* Provide a breakdown of the original question.
+* Analyze how the origin solution solves the question step by step.
+* Based on the solution steps, design the corresponding verification steps. Ecah verifacation step should check consistency, calculation, logic, assumptions, .etc.
 """
 
     DEFAULT_USER_STAGE_SUBTASK_BEGIN="""Stage B: Solution Analysis & Judgment
 
-You will now begin multi-turn verification of the planned steps from Stage A, one step per turn if necessary.
+You will now begin multi-turn verification of the planned steps from Stage A.
 
-Rules for this stage:
-- For each step, provide a detailed analysis with careful reasoning via <think> reasoning process </think> block. Check assumptions, arithmetic, units, bounds, and IMPROTANTLY logical coherence.
-- If you realize that the planned steps are insufficient, you MAY introduce a NEW step. To declare a new step, start the <think> block with:
-  <new_step reason="..."/>
-  Then continue your reasoning in the same <think> block. End this newly added step with <step/> as usual, and continue to verify the next planned step.
-- If you need to verify with Python after your reasoning, output the left alligned code inside a <python> tag after the <think> tag:
-<python>
-import math
-# your code here
-</python>
-- The code must be left-aligned, contain necessary imports, and avoid input(), OS commands, file I/O, network, or infinite loops. The code is executed in a sandbox; only stdout will be returned.
-- Use python tools only when it is necessary.
-- If you do NOT use Python in that turn and you have finished the current step’s analysis, output <step/> after <think></think> to continue to the next step.
-- When ALL steps are completed with no mistakes found, output <end_of_analysis/> on its own line.
-- Python tools can only be used twice per step(including failure), calls with exceeded quota will result in error.
+* You should conduct your verification according to the steps you designed in stage A. Each time you finished verifying one step, output exactly one <step/> at the end of one turn indicating you will proceed to the next step.
+* When you finished all verification steps or you find a obvious mistake in the original solution, output exactly one <end_of_analysis/> to finish stage B.
+* If complex calculations are involved, you may call python tool for calculation. To call python tool, you should outut a <python>...</python> tag instead of a <step/> at the end of one turn.
+The system will execute your code in a sandbox and return the contents of stdout. Then you can continue your step wise verification.
+  - The python code must be left-aligned, contain necessary imports, and avoid input(), OS commands, file I/O, network, or infinite loops.
+  - You must use print() so that the results of the python code can be correctly shown.
+  - You should not call python for trival question or any meaningless self-prove.
 
-Begin with the first planned verification step.
+Now begin your verification:
     """
     
     DEFAULT_USER_STAGE_SUBTASK_MIDDLE=""" Stage B: Solution Analysis & Judgment (continue)
 
-Now continue to verify the next planned step or inject a new step to verify. 
+Now continue to verify the next planned step. 
     """
     
     DEFAULT_USER_STAGE_REVIEW_MIDDLE="""Stage C: Final Review & Verdict
@@ -171,11 +136,9 @@ Now continue to verify the next planned step or inject a new step to verify.
 Given all prior analyses, provide the final review and the boolean verdict.
 
 Requirements:
-- Summarize errors found OR explain why the solution appears trustworthy, in:
-<review>...</review>
-
-- Then give the final boolean verdict in:
-<answer>true|false</answer>"""
+- Go through all verification steps you have conducted, summarize why the step is correct or incorrect.
+- If all prior steps are confirmed to be correct, output <answer>true</answer>
+- If you have confirmed there are errors found in the steps, or you discover any new inconsistency at this moment, output <answer>false</answer>"""
     
     def __init__(
         self,
@@ -374,54 +337,32 @@ Requirements:
         
 class BackwardVerifyAgent:
     
-    DEFAULT_SYSTEM="""You are a **Backward Verifier**, responsible for verifying whether a proposed solution is fully justified by the given problem statement through *backward reasoning*.
+    DEFAULT_SYSTEM="""You are a backward verifier who judges whether a given math solution truly proves or computes what the question asks.
 
-Verification Objective:
-- Starting from the final solution (answer), reason step by step backward to identify the minimal set of premises required.
-- Check whether each premise is explicitly or implicitly supported by the problem statement.
+Your approach is opposite to a step-by-step verifier: 
+instead of checking the reasoning forward, you start from the final answer or conclusion in the solution 
+and reason backward to see if it can be justified from the given question and known facts.
+"""
 
-Rules:
-1. You MUST output the following tags strictly in this order: <goal>, <backtrace>, <evidence>, <conflicts>, <checklist>, and finally <answer>.
-2. In <goal>, extract the key conclusions or claims made in the proposed solution.
-3. In <backtrace>, derive the minimal logical premises that must hold true for each claim, reasoning backward from the conclusion.
-4. In <evidence>, match each premise with textual or logical evidence from the problem.  
-   - Use <ok premise="..."><quote>...</quote></ok> if supported.  
-   - Use <gap premise="...">reason for missing or unsupported premise</gap> if no valid support exists.
-5. In <conflicts>, explicitly note any contradictions between the proposed solution and the problem statement using <conflict target="..."><quote>...</quote></conflict>.
-6. In <checklist>, summarize the verification result:
-   - <coverage>percentage of premises supported</coverage>
-   - <has_gap>true|false</has_gap>
-   - <has_conflict>true|false</has_conflict>
-7. You must output <answer>true</answer> only if:
-   - All necessary premises are directly supported or trivially inferable from the problem (e.g., through basic arithmetic, definitions, or domain-level common sense).
-8. Output <answer>false</answer> only if at least one <gap> or <conflict> is present with explicit quoted justification.
-9. Minor omitted steps that are universally accepted (e.g., algebraic simplifications, definition recall) DO NOT count as gaps.
-10. The response must use only the specified XML-like tags, with exactly one <answer> at the end."""
+    DEFAULT_USER_INIT="""Read the following carefully and think critically:
 
-    DEFAULT_USER_INIT="""<problem>
+## Original Question
 {question}
-</problem>
-<proposed_answer>
+
+## Original Solution
 {answer}
-</proposed_answer>
 
-Follow the verification protocol below:
+Your task:
+1. Start from the final result or claim of the solution.
+2. Work backward: check whether each required assumption, definition, or transformation 
+   is explicitly or implicitly supported by the question or earlier steps.
+3. Detect any logical gaps, unjustified assumptions, circular reasoning, or numerical inconsistencies.
+4. Focus on whether the final conclusion is *provably necessary* given the premises, 
+   not merely plausible or numerically close.
 
-<goal>Identify the main conclusions from the proposed solution.</goal>
-<backtrace>For each conclusion, infer backward the minimal necessary premises that must hold for it to be valid.</backtrace>
-<evidence>
-  For each premise:
-  - If supported by the problem statement, record <ok premise="..."><quote>...</quote></ok>.
-  - If not supported or contradicted, record <gap premise="...">explanation of failure</gap>.
-</evidence>
-<conflicts>List explicit contradictions as <conflict target="..."><quote>...</quote></conflict>.</conflicts>
-<checklist>
-  <coverage>ratio of supported premises to total premises (integer percentage)</coverage>
-  <has_gap>true|false</has_gap>
-  <has_conflict>true|false</has_conflict>
-</checklist>
-
-Conclude with <answer>true|false</answer> to indicate whether the proposed solution is fully justified by backward reasoning."""
+At the end, output your final judgment in one line using:
+<answer>true</answer>  — if the backward reasoning confirms that the conclusion must hold.
+<answer>false</answer> — if there is any missing justification, invalid reversal, or unsupported dependency."""
     
     def __init__(
         self,
