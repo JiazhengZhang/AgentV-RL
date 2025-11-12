@@ -70,7 +70,7 @@ def _to_bool(text: str) -> Optional[bool]:
 
 @ray.remote(num_gpus=1, max_restarts=8, max_task_retries=8)
 class JudgeWorker:
-    def __init__(self, config: Dict[str, Any], system_prompt: str, user_prompt: str):
+    def __init__(self, config: Dict[str, Any], system_prompt: str, user_prompt: str, enable_thinking: bool = True):
         os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
         os.environ.setdefault("OMP_NUM_THREADS", "1")
         os.environ.setdefault("MKL_NUM_THREADS", "1")
@@ -78,7 +78,7 @@ class JudgeWorker:
             torch.cuda.set_device(0)
 
         backend = VllmChoiceLogitsBackend(config)
-        backend.set_chat_template_defaults(enable_thinking=True)
+        backend.set_chat_template_defaults(enable_thinking=enable_thinking)
         self.backend = backend
         reg = ToolRegistry()
         reg.register(PythonExecutionTool())
@@ -245,6 +245,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--model_path", default=None, type=str)
     p.add_argument("--record-batch-size", type=int, default=16)
     p.add_argument("--append", action="store_true")
+    p.add_argument("--enable_thinking", action="store_true")
     p.add_argument("--join-template", type=str, default="")
     p.add_argument("--judge-system-file", type=str, default=None)
     p.add_argument("--judge-user-file", type=str, default=None)
@@ -282,6 +283,11 @@ def main():
     config = load_config(args.config)
     if args.model_path:
         config["backend"]["model_path"] = args.model_path
+        
+    if args.enable_thinking:
+        enable_thinking = True
+    else:
+        enable_thinking = False
 
     ray.init(include_dashboard=False)  
     logger.info("Ray initialized.")

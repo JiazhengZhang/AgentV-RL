@@ -62,6 +62,8 @@ class VllmChoiceLogitsBackend(ChatTemplateDefaultsMixin, CanGenerate, CanChoiceP
                             add_generation_prompt=True, 
                             **additional_params) -> Union[str, Any, List[str]]:
         merged = self._merge_for_call(additional_params)
+        if "add_generation_prompt" in merged.keys():
+            add_generation_prompt = merged.pop("add_generation_prompt")
         result, _ = safe_apply_chat_template(
             self.tokenizer,
             messages=messages,

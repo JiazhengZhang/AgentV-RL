@@ -126,6 +126,7 @@ class vllmMultiturnWrapper:
             wg=wg,
             tokenizer=tokenizer,
             logger=self.logger,
+            max_prompt_length=30000,
         )
         self.backend.set_chat_template_defaults(enable_thinking=True)
         tool_registry = ToolRegistry()
@@ -279,12 +280,14 @@ class vllmMultiturnWrapper:
         problems: List[str] = [extra_info[i].get("problem","") for i in range(batch_size)]
         solutions: List[str] = [extra_info[i].get("solution","") for i in range(batch_size)]
         
-
+        kwargs_middle = {
+            "sleep_after_inference":False,
+        }
         
         timing_generate = {}
         with simple_timer("agent generation", timing_generate):
         
-            msgs, metas = self.forward_agent.generate(problems, solutions)
+            msgs, metas = self.forward_agent.generate(problems, solutions, **kwargs_middle)
             input_msgs_list = [[] for _ in range(batch_size)]
             response_ids_list = [[] for _ in range(batch_size)]
             response_mask_list = [[] for _ in range(batch_size)]
@@ -328,5 +331,8 @@ class vllmMultiturnWrapper:
             
         gather_output.meta_info["timing"] = timing_generate
         gather_output = gather_output.to("cpu")
+        
+        mock_msgs = [[{"role":"user","content":"How are you"}] for _ in range(batch_size)]
+        _, _ = self.backend.generate(mock_msgs, sleep_after_inference=True)
         return gather_output
         

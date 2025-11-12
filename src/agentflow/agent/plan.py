@@ -181,7 +181,7 @@ Requirements:
         
         full_msgs = [Message.from_dicts(msgs) for msgs in start_msgs]
         
-        resps, gen_metas = self.agent.generate(start_msgs)
+        resps, gen_metas = self.agent.generate(start_msgs, **kwargs)
         gen_contexts: List[AgentContext] = [met["context"] for met in gen_metas]
         for idx, (resp, context) in enumerate(zip(resps, gen_contexts)):
             full_msgs[idx].extend(context.all_round_messages())
@@ -202,7 +202,7 @@ Requirements:
                 finish_fn=self._stage_subtask,
                 error_fn=self._stage_subtask_has_error
             ):
-                resps, gen_metas = self.agent.generate(input_msgs)
+                resps, gen_metas = self.agent.generate(input_msgs,**kwargs)
                 curr_contexts: List[AgentContext] = [met["context"] for met in gen_metas]
             
             next_active_idxs = []
@@ -226,7 +226,7 @@ Requirements:
             finish_fn=self._stage_review,
             error_fn=self._stage_review_has_error
         ):
-            resps, gen_metas = self.agent.generate(input_msgs)
+            resps, gen_metas = self.agent.generate(input_msgs,**kwargs)
             curr_contexts: List[AgentContext] = [met["context"] for met in gen_metas]
         
         for idx, (resp, context) in enumerate(zip(resps, curr_contexts)):
@@ -404,7 +404,7 @@ At the end, provide your final judgment in a single line using:
         
         full_msgs = [Message.from_dicts(msgs) for msgs in start_msgs]
         
-        resps, gen_metas = self.agent.generate(start_msgs)
+        resps, gen_metas = self.agent.generate(start_msgs,**kwargs)
         gen_contexts: List[AgentContext] = [met["context"] for met in gen_metas]
         for idx, (resp, context) in enumerate(zip(resps, gen_contexts)):
             full_msgs[idx].extend(context.all_round_messages())

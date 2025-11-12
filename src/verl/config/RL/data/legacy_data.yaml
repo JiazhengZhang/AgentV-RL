@@ -49,7 +49,7 @@ return_full_prompt: False
 shuffle: True
 
 # num dataloader workers
-dataloader_num_workers: 8
+dataloader_num_workers: 0
 
 # Whether to shuffle the validation set.
 validation_shuffle: False
