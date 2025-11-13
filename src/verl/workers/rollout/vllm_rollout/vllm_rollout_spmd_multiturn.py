@@ -109,6 +109,7 @@ class vllmMultiturnWrapper:
         wg: VerlWg,
         tokenizer: PreTrainedTokenizer,
         agent_config_path: str = None,
+        enable_thinking: bool = True,
         **kwargs
     ): 
         self.config=config
@@ -128,7 +129,7 @@ class vllmMultiturnWrapper:
             logger=self.logger,
             max_prompt_length=30000,
         )
-        self.backend.set_chat_template_defaults(enable_thinking=True)
+        self.backend.set_chat_template_defaults(enable_thinking=enable_thinking)
         tool_registry = ToolRegistry()
         py_tool = PythonExecutionTool()
         tool_registry.register(py_tool)

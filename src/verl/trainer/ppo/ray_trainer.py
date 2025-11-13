@@ -403,6 +403,7 @@ class RayPPOTrainer:
                 wg=self.actor_rollout_wg,
                 tokenizer=self.tokenizer,
                 agent_config_path=self.config.actor_rollout_ref.extra.agent_config_path,
+                enable_thinking=self.config.actor_rollout_ref.extra.enable_thinking,
                 max_subtasks=self.config.actor_rollout_ref.extra.max_num_subtasks
             )
         else:
@@ -794,7 +795,7 @@ class RayPPOTrainer:
             sample_inputs.extend(input_texts)
 
             batch_keys_to_pop = ["input_ids", "attention_mask", "position_ids"]
-            non_tensor_batch_keys_to_pop = ["raw_prompt_ids"]
+            non_tensor_batch_keys_to_pop = ["raw_prompt_ids", "extra_info"]
             if "multi_modal_data" in test_batch.non_tensor_batch:
                 non_tensor_batch_keys_to_pop.append("multi_modal_data")
             if "raw_prompt" in test_batch.non_tensor_batch:

@@ -162,6 +162,8 @@ actor_rollout_ref:
     # tool config path
     agent_config_path: /root/workspace/agent-rm/Agent-Verifier/config/train_grpo.yaml
 
+    enable_thinking: True
+
     use_multiturn_wrapper: True
 
     max_num_subtasks: 8
