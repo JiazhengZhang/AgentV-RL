@@ -108,21 +108,21 @@ In this stage, given the question and the solution above, you are required to:
 
 * Break down the original question into its key components.
 * Analyze how the provided solution addresses the question step by step.
-* Based on the solution steps, design corresponding verification steps. Each verification step should examine aspects such as consistency, calculations, logic, and assumptions.
+* Based on the solution steps, design corresponding verification steps for stage B. Each verification step should examine aspects such as consistency, calculations, logic, and assumptions.
+* You Do not need to check the steps here, leave them to stage B.
 """
 
     DEFAULT_USER_STAGE_SUBTASK_BEGIN="""Stage B: Solution Analysis & Judgment
 
 You will now begin multi-turn verification of the steps planned in Stage A.
 
-* Conduct the verification according to your plan from Stage A. After completing each verification step, output exactly one <step/> tag at the end of that turn to indicate you are proceeding to the next step.
-* Once all verification steps are complete, or if you identify an obvious mistake in the original solution, output exactly one <end_of_analysis/> tag to conclude Stage B.
+* Conduct the verification according to your plan from Stage A. You should both check the steps themselves and the logic between steps.
+* After completing each verification step, output exactly one <step/> tag at the end of that turn to indicate you are proceeding to the next step.
+* Once all verification steps are complete, or if you identify an obvious mistake in the original solution, output exactly one <end_of_analysis/> tag to finsh Stage B and enter stage C.
 * If complex calculations are involved, you may call the Python tool for computation. To do so, output a <python>...</python> block instead of a <step/> tag at the end of that turn.
   - The Python code must be left-aligned, include necessary imports, and avoid input(), OS commands, file I/O, networking, or infinite loops.
   - Use print() to display results so they can be correctly captured by the system.
   - Do not invoke Python for trivial or self-evident checks.
-
-Now begin your verification:
     """
     
     DEFAULT_USER_STAGE_SUBTASK_MIDDLE=""" Stage B: Solution Analysis & Judgment (continued)

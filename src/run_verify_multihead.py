@@ -245,7 +245,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--model_path", default=None, type=str)
     p.add_argument("--record-batch-size", type=int, default=16)
     p.add_argument("--append", action="store_true")
-    p.add_argument("--enable_thinking", action="store_true")
+    p.add_argument("--enable-thinking", action="store_true")
     p.add_argument("--join-template", type=str, default="")
     p.add_argument("--judge-system-file", type=str, default=None)
     p.add_argument("--judge-user-file", type=str, default=None)
@@ -293,7 +293,7 @@ def main():
     logger.info("Ray initialized.")
 
     num_workers = max(1, args.num_workers)
-    workers = [JudgeWorker.remote(config, system_prompt, user_prompt) for _ in range(num_workers)]
+    workers = [JudgeWorker.remote(config, system_prompt, user_prompt, enable_thinking) for _ in range(num_workers)]
     logger.info(f"Spawned {num_workers} Ray workers.")
 
     window = max(1, int(args.max_inflight_batches))

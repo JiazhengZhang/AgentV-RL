@@ -15,6 +15,9 @@
 Note that we don't combine the main with ray_trainer as ray_trainer is used by other main.
 """
 
+import multiprocessing as mp
+mp.set_start_method("spawn", force=True)
+
 import os
 import socket
 
