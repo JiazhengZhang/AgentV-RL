@@ -84,19 +84,22 @@ class MultiturnPlanSubtaskAgent:
     DEFAULT_SYSTEM="""You are a Verifier agent responsible for performing a multi-turn verification of a math problem’s solution.
 Your mission is to determine whether the given solution is correct.
 
-You must complete the task in three stages:
+You must complete the task strictly in three distinct stages, executed sequentially and independently.
 
 ## Stage A: Task Analysis & Extraction
 Analyze the original question and its provided solution. Decompose the verification into smaller, checkable steps.
 
 ## Stage B: Solution Analysis & Judgment
-Execute the planned verification steps one by one across multiple turns.
+Perform the actual verification one step at a time, following the plan you created in Stage A.
 
 ## Stage C: Final Review & Verdict
-Review all prior analyses and provide a final boolean verdict indicating whether the original solution correctly solves the problem.
+After all Stage B steps are complete, review the entire reasoning process and produce a final boolean verdict.
+
+In every turn, you must include your reasoning process inside a <think>...</think> block before presenting your results.
+
 """
     
-    DEFAULT_USER_INIT = """Stage A: Task Analysis & Extraction
+    DEFAULT_USER_INIT = """You are now entering **Stage A: Task Analysis & Extraction**.
 
 ## Original Question
 {question}
@@ -104,37 +107,56 @@ Review all prior analyses and provide a final boolean verdict indicating whether
 ## Original Solution (to be verified)
 {answer}
 
-In this stage, given the question and the solution above, you are required to:
+In this stage, you are limited to analysis and planning only.
+You must NOT verify, compute, or decide correctness during Stage A.
 
-* Break down the original question into its key components.
-* Analyze how the provided solution addresses the question step by step.
-* Based on the solution steps, design corresponding verification steps for stage B. Each verification step should examine aspects such as consistency, calculations, logic, and assumptions.
-* You Do not need to check the steps here, leave them to stage B.
+Your objectives:
+* Break down the original question into its essential components.
+* Decompose the provided solution into its main steps.
+* Design a sequence of verification steps for Stage B.
+  - Each verification step must describe *what* to check later, not perform the check itself.
+  - Focus on logical reasoning, consistency, assumptions, and calculations that need to be validated in Stage B.
+
+After you list all the planned verification steps, stop your generation immediately to indicate that Stage A is complete.
 """
 
-    DEFAULT_USER_STAGE_SUBTASK_BEGIN="""Stage B: Solution Analysis & Judgment
+    DEFAULT_USER_STAGE_SUBTASK_BEGIN="""You are now entering **Stage B: Solution Analysis & Judgment**.
 
-You will now begin multi-turn verification of the steps planned in Stage A.
+In this stage, you will conduct a multi-turn verification of the steps designed in Stage A.
+Each verification step may require one or more turns to complete.
 
-* Conduct the verification according to your plan from Stage A. You should both check the steps themselves and the logic between steps.
-* After completing each verification step, output exactly one <step/> tag at the end of that turn to indicate you are proceeding to the next step.
-* Once all verification steps are complete, or if you identify an obvious mistake in the original solution, output exactly one <end_of_analysis/> tag to finsh Stage B and enter stage C.
-* If complex calculations are involved, you may call the Python tool for computation. To do so, output a <python>...</python> block instead of a <step/> tag at the end of that turn.
-  - The Python code must be left-aligned, include necessary imports, and avoid input(), OS commands, file I/O, networking, or infinite loops.
-  - Use print() to display results so they can be correctly captured by the system.
-  - Do not invoke Python for trivial or self-evident checks.
+**Turn Logic:**
+- A single verification step may take multiple turns.
+- Each turn must end with one of the following:
+  * <python>...</python> — when you need to perform a computation before continuing the same step in the next turn.
+  * <step/> — when the current step has been fully verified and you are ready to move to the next one.
+  * <end_of_analysis/> — when all steps are verified or a clear error has been found.
+
+**Instructions for each turn:**
+1. Restate the step you are verifying and reason carefully about it.
+2. Check whether this step is logically consistent with all previously verified steps.
+3. If a calculation or detailed check is needed, output a <python>...</python> block after reasoning and stop your response.  
+   The system will execute it and return the results for you to continue in the next turn.
+
+**Rules for <python> blocks:**
+- Use only necessary imports and print() statements for outputs.
+- Do not use OS commands, file I/O, input(), or networking.
+- A <python> block always marks the end of the current turn.
+- You may use at most three <python> blocks across all of Stage B.
+
     """
     
-    DEFAULT_USER_STAGE_SUBTASK_MIDDLE=""" Stage B: Solution Analysis & Judgment (continued)
-Continue verifying the next planned step.
+    DEFAULT_USER_STAGE_SUBTASK_MIDDLE=""" Continue verifying the next planned step.
+if all steps are finished, output <end_of_analysis/> to enter stage C.
     """
     
-    DEFAULT_USER_STAGE_REVIEW_MIDDLE="""Stage C: Final Review & Verdict
+    DEFAULT_USER_STAGE_REVIEW_MIDDLE="""
+Now you are required to conduct stage C.
 
 Given all prior analyses, provide your final review and boolean verdict.
 
 Requirements:
-- Review all previous verification steps and summarize why each step was correct or incorrect.
+- Review all previous verification steps and summarize why each step was correct or incorrect in <review>...</review>.
 - If all previous steps were confirmed to be correct, output <answer>true</answer>.
 - If any step contained errors, or if you identify new inconsistencies at this stage, output <answer>false</answer>."""
     
