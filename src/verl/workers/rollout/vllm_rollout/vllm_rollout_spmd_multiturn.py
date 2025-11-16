@@ -56,6 +56,7 @@ from agentflow.agent.plan import MultiturnPlanSubtaskAgent, BackwardVerifyAgent
 from agentflow.tools.registry import ToolRegistry
 from agentflow.tools.parser import TagToolParser
 from agentflow.tools.code.python_execution import PythonExecutionTool
+from agentflow.tools.code.python_execution_ray import PythonExecutionToolRay, create_python_actor
 from agentflow.tools.caller import ToolCaller
 from agentflow.utils.json_util import JsonUtil
 from agentflow.utils.tag_util import find_tags
@@ -131,7 +132,7 @@ class vllmMultiturnWrapper:
         )
         self.backend.set_chat_template_defaults(enable_thinking=enable_thinking)
         tool_registry = ToolRegistry()
-        py_tool = PythonExecutionTool()
+        py_tool = PythonExecutionToolRay(actor=create_python_actor(time_limit_s=10, mem_limit_mb=16))
         tool_registry.register(py_tool)
         self.tool_registry = tool_registry
 

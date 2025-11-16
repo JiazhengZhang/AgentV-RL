@@ -18,10 +18,7 @@ def setup_module():
     """Start Ray before all tests."""
     if not ray.is_initialized():
         ray.init(
-            num_cpus=4,
-            ignore_reinit_error=True,
             include_dashboard=False,
-            log_to_driver=True
         )
         
     actor = create_python_actor()
@@ -33,7 +30,8 @@ def teardown_module():
         ray.shutdown()
 
 
-def test_python_tool_print_basic(actor):
+def test_python_tool_print_basic():
+    actor = create_python_actor()
     tool = PythonExecutionToolRay(actor = actor,timeout_length=5)
     request = ToolCallRequest(
         index=0,
@@ -45,7 +43,8 @@ def test_python_tool_print_basic(actor):
     assert "6" in result.output
 
 
-def test_python_tool_forbidden_calls(actor):
+def test_python_tool_forbidden_calls():
+    actor = create_python_actor()
     tool = PythonExecutionToolRay(actor = actor, timeout_length=3)
     request = ToolCallRequest(
         index=0,
@@ -58,7 +57,8 @@ def test_python_tool_forbidden_calls(actor):
     assert "Forbidden" in (result.meta["error"] or "")
 
 
-def test_python_tool_timeout(actor):
+def test_python_tool_timeout():
+    actor = create_python_actor()
     tool = PythonExecutionToolRay(actor = actor, timeout_length=2)
     request = ToolCallRequest(
         index=0,
@@ -71,7 +71,8 @@ def test_python_tool_timeout(actor):
     assert result.meta["error"] == "Timeout"
 
 
-def test_python_tool_batch(actor):
+def test_python_tool_batch():
+    actor = create_python_actor()
     tool = PythonExecutionToolRay(actor = actor, timeout_length=5)
 
     tool.register_helpers_from_code(
@@ -110,9 +111,9 @@ def foo():
 
 if __name__ == "__main__":
     setup_module()
-    actor = create_python_actor()
-    test_python_tool_print_basic(actor)
-    test_python_tool_forbidden_calls(actor)
-    test_python_tool_timeout(actor)
-    test_python_tool_batch(actor)
+    
+    test_python_tool_print_basic()
+    test_python_tool_forbidden_calls()
+    test_python_tool_timeout()
+    test_python_tool_batch()
     teardown_module()

@@ -16,13 +16,13 @@ from .execution_plan import ExecPlan
 class PythonSandboxActor:
     def __init__(
         self,
-        config: Dict[str, Any],
+        config: SandboxConfig,
         headers: Optional[List[str]] = None,
         context: Optional[Dict[str, Any]] = None,
         helpers: Optional[Dict[str, Any]] = None,
         helper_code: Optional[List[str]] = None,
     ):
-        self.config = SandboxConfig(**config)
+        self.config = config
         self.headers = list(headers or [])
         self.context = dict(context or {})
         self.helpers = dict(helpers or {})

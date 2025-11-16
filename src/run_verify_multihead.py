@@ -16,6 +16,7 @@ from agentflow.config import load_config
 from agentflow.backend.vllm_logits import VllmChoiceLogitsBackend
 from agentflow.tools.registry import ToolRegistry
 from agentflow.tools.code.python_execution import PythonExecutionTool
+from agentflow.tools.code.python_execution_ray import PythonExecutionToolRay, create_python_actor
 from agentflow.agent.plan import MultiturnPlanSubtaskAgent, BackwardVerifyAgent
 from agentflow.inference.scorers.base import BoolLogitsScorer
 from agentflow.utils.json_util import JsonUtil
@@ -96,7 +97,8 @@ class JudgeWorker:
         backend.set_chat_template_defaults(enable_thinking=enable_thinking)
         self.backend = backend
         reg = ToolRegistry()
-        reg.register(PythonExecutionTool())
+        py_tool = PythonExecutionToolRay(actor=create_python_actor(time_limit_s=10, mem_limit_mb=16))
+        reg.register(py_tool)
         self.agent = MultiturnPlanSubtaskAgent(
             backend=backend,
             tool_registry=reg,

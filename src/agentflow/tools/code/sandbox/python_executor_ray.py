@@ -46,6 +46,8 @@ class RayPythonExecutor:
 
     def inject_from_code(self, code: str, export=None, alias=None) -> None:
         self._helper_code.append(code)
+        if self._actor is not None:
+            ray.get(self._actor.register_header.remote(code))
 
 
     def _ensure_actor(self):
@@ -101,38 +103,13 @@ class RayPythonExecutor:
 
         return ExecutionResult(**res_dict)
 
-    def run_many(self, plans: List[ExecPlan], show_progress: bool=False) -> List[ExecutionResult]:
+    def run_many(self, plans: List[ExecPlan], show_progress: bool = False) -> List[ExecutionResult]:
         if not plans:
             return []
-        self._ensure_actor()
-        plan_dicts = [asdict(p) for p in plans]
-        timeout_s = float(self.config.time_limit_s) * len(plans) + 5.0
 
-        try:
-            fut = self._actor.run_many.remote(plan_dicts)
-            res_list = ray.get(fut, timeout=timeout_s)
-        except GetTimeoutError:
-            self.shutdown()
-            return [
-                ExecutionResult(
-                    ok=False,
-                    result="",
-                    stdout="",
-                    error="Timeout",
-                    duration_s=self.config.time_limit_s,
-                )
-                for _ in plans
-            ]
-        except Exception as e:
-            return [
-                ExecutionResult(
-                    ok=False,
-                    result="",
-                    stdout="",
-                    error=f"Exception: {type(e).__name__}: {e}",
-                    duration_s=None,
-                )
-                for _ in plans
-            ]
+        results: List[ExecutionResult] = []
 
-        return [ExecutionResult(**d) for d in res_list]
+        for plan in plans:
+            res = self.run(plan)
+            results.append(res)
+        return results
