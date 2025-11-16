@@ -85,7 +85,7 @@ class PythonExecutionTool(BaseTool):
         plan = ExecPlan(code=str(call.content), capture_mode=cap, answer_symbol=symbol, answer_expr=expr)
         res = self.executor.run(plan)
 
-        out = f"Stdout: {res.stdout}\nStatus: {res.result}"
+        out = f"Stdout: {res.stdout}"
         if len(out) > 2000:
             out = out[:2000] + "...(trunc)"
             

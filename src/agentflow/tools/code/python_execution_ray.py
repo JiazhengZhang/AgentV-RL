@@ -123,7 +123,7 @@ class PythonExecutionToolRay(BaseTool):
             results = self.executor.run_many(plans, show_progress=self.use_tqdm)
             packed: List[ToolCallResult] = []
             for res, c in zip(results, allowed_calls):
-                out = f"Stdout: {res.stdout}\nStatus: {res.result}"
+                out = f"Stdout: {res.stdout}"
                 if len(out) > 2000:
                     out = out[:2000] + "...(trunc)"
                 rep = "Execution Success" if res.ok else f"Execution Failed\n{res.error}"
