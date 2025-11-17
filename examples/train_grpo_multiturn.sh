@@ -71,6 +71,7 @@ python3 -m verl.trainer.main_ppo --config-path=$CONFIG_DIR --config-name=$CONFIG
     actor_rollout_ref.actor.use_kl_loss=False \
     actor_rollout_ref.actor.ulysses_sequence_parallel_size=4 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
+    actor_rollout_ref.rollout.per_round_max_tokens=4096 \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.rollout.n=${ROLLOUT_N} \
     actor_rollout_ref.rollout.name=vllm \
