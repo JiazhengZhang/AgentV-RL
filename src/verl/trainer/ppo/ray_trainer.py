@@ -21,12 +21,13 @@ This trainer supports model-agonistic model initialization with huggingface
 import json
 import os
 import uuid
+import copy
 from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import Enum
 from pprint import pprint
-from typing import Optional
+from typing import Optional, Dict, List
 
 import numpy as np
 import ray
@@ -82,6 +83,216 @@ class Role(Enum):
     RefPolicy = 4
     RewardModel = 5
     ActorRolloutRef = 6
+    
+def dyn_sample_dapo_polaris(
+    batch: "DataProto",
+    reward_tensor: torch.Tensor,
+    reward_extra_infos_dict: Optional[Dict[str, List]] = None,
+    *,
+    temperature: float = 1.0,
+    max_debug_groups: int = 2,
+    print_debug: bool = True,
+    grpo_eps: float = 1e-6,
+):
+    """
+    Replace the groups meaningless for grpo with valid groups.
+
+    Returns：
+        batch（In place）,
+        reward_tensor（In place）,
+        reward_extra_infos_dict（Inplace）,
+        metrics_dict
+    """
+    if reward_extra_infos_dict is None:
+        reward_extra_infos_dict = {}
+
+    device = reward_tensor.device
+
+    # scalar reward: (B,)
+    scores = reward_tensor.sum(dim=-1)
+
+    # uid: np.array(dtype=object) (B,)
+    uids = batch.non_tensor_batch["uid"]
+    assert len(uids) == scores.shape[0], f"{len(uids)=}, {scores.shape=}"
+    B = scores.shape[0]
+
+    groups: Dict[str, List[int]] = defaultdict(list)
+    for idx, uid in enumerate(uids):
+        groups[uid].append(idx)
+
+    legal_groups: Dict[str, List[int]] = {}
+    illegal_groups: Dict[str, List[int]] = {}
+
+    debug_payload: List[dict] = []
+
+    for gi, (uid, idx_list) in enumerate(groups.items()):
+        idx_tensor = torch.tensor(idx_list, dtype=torch.long, device=device)
+        group_scores = scores[idx_tensor]      # (group_size,)
+        group_size = group_scores.shape[0]
+
+        can_grpo = True
+        if group_size <= 1:
+            can_grpo = False
+        else:
+            score_range = (group_scores.max() - group_scores.min()).item()
+            if score_range < grpo_eps:
+                can_grpo = False
+
+        if can_grpo:
+            legal_groups[uid] = idx_list
+            if print_debug and gi < max_debug_groups:
+                debug_payload.append(
+                    {
+                        "uid": uid,
+                        "indices": idx_list,
+                        "scores": group_scores.detach().cpu().tolist(),
+                        "status": "legal",
+                    }
+                )
+        else:
+            illegal_groups[uid] = idx_list
+            if print_debug and gi < max_debug_groups:
+                debug_payload.append(
+                    {
+                        "uid": uid,
+                        "indices": idx_list,
+                        "scores": group_scores.detach().cpu().tolist(),
+                        "status": "illegal",
+                    }
+                )
+
+    num_groups = len(groups)
+    num_legal = len(legal_groups)
+    num_illegal = len(illegal_groups)
+
+    if num_legal == 0:
+        if print_debug:
+            print(
+                "\n[DAPO Polaris-style] WARNING: no legal GRPO groups found "
+                "(all groups have size<=1 or identical rewards). "
+                "Skip dynamic sampling and keep original batch.\n"
+            )
+        metrics = {
+            "dapo/skip": 1.0,
+            "dapo/keep_ratio_overall": 1.0,
+            "dapo/num_groups": num_groups,
+            "dapo/num_legal_groups": 0,
+            "dapo/num_invalid_groups": num_illegal,
+            "dapo/num_replaced_groups": 0,
+        }
+        return batch, reward_tensor, reward_extra_infos_dict, metrics
+
+    legal_uids = list(legal_groups.keys())
+    legal_group_scores = [] # align with legal uids
+    for uid in legal_uids:
+        idx_list = legal_groups[uid]
+        idx_tensor = torch.tensor(idx_list, dtype=torch.long, device=device)
+        g_scores = scores[idx_tensor]
+        legal_group_scores.append(g_scores.mean().item())
+
+    legal_group_scores = torch.tensor(legal_group_scores, device=device)
+    donor_probs = torch.softmax(legal_group_scores / temperature, dim=0)
+
+    if print_debug:
+        print("\n[DAPO Polaris-style] legal group summary:")
+        for i, (uid, g_score) in enumerate(zip(legal_uids, legal_group_scores.tolist())):
+            print(f"  uid={uid}, group_score={g_score:.4f}, prob={float(donor_probs[i]):.4f}")
+        print("")
+
+    def _replace_seq_like(seq, dst_idx_list, src_idx_list):
+        if len(seq) != B:
+            return
+
+        if isinstance(seq, np.ndarray):
+            seq[dst_idx_list] = seq[src_idx_list]
+            return
+
+        for di, si in zip(dst_idx_list, src_idx_list):
+            seq[di] = copy.deepcopy(seq[si])
+
+    replaced_pairs = []  # (bad_uid, donor_uid)
+
+    for bad_uid, bad_idx_list in illegal_groups.items():
+        donor_legal_idx = torch.multinomial(donor_probs, num_samples=1).item()
+        donor_uid = legal_uids[donor_legal_idx]
+
+        donor_idx_list = legal_groups[donor_uid]
+
+        bad_idx_tensor = torch.tensor(bad_idx_list, dtype=torch.long, device=device)
+        donor_idx_tensor = torch.tensor(donor_idx_list, dtype=torch.long, device=device)
+
+        bad_size = bad_idx_tensor.numel()
+        donor_size = donor_idx_tensor.numel()
+
+        # Should not enter these branchs
+        if donor_size < bad_size:
+            print(f"[WARN] Denor size and bad size not match, whhich should not happen in grpo")
+            repeat = (bad_size + donor_size - 1) // donor_size
+            donor_idx_tensor = donor_idx_tensor.repeat(repeat)[:bad_size]
+        elif donor_size > bad_size:
+            print(f"[WARN] Denor size and bad size not match, whhich should not happen in grpo")
+            perm = torch.randperm(donor_size, device=device)
+            donor_idx_tensor = donor_idx_tensor[perm[:bad_size]]
+
+        dst_idx_list = bad_idx_tensor.detach().cpu().tolist()
+        src_idx_list = donor_idx_tensor.detach().cpu().tolist()
+
+        tensor_keys_to_copy = [
+            "responses",
+            "input_ids",
+            "attention_mask",
+            "position_ids",
+            "prompts",
+            "loss_mask",
+            "response_mask",
+            "token_level_scores"
+        ]
+        for key in tensor_keys_to_copy:
+            if key in batch.batch:
+                batch.batch[key][bad_idx_tensor] = batch.batch[key][donor_idx_tensor]
+
+        reward_tensor[bad_idx_tensor] = reward_tensor[donor_idx_tensor]
+
+        for k, v in batch.non_tensor_batch.items():
+            if k == "uid":
+                continue
+            if hasattr(v, "__len__") and len(v) == B:
+                _replace_seq_like(v, dst_idx_list, src_idx_list)
+
+        for k, v in reward_extra_infos_dict.items():
+            if hasattr(v, "__len__") and len(v) == B:
+                _replace_seq_like(v, dst_idx_list, src_idx_list)
+
+        replaced_pairs.append((bad_uid, donor_uid))
+
+    total_before = scores.shape[0]
+    total_after = reward_tensor.shape[0]
+    assert total_after == total_before, "Batch size should not be changed for our dapo"
+
+    metrics = {
+        "dapo/skip": 0.0,
+        "dapo/keep_ratio_overall": 1.0,
+        "dapo/num_groups": num_groups,
+        "dapo/num_legal_groups": num_legal,
+        "dapo/num_invalid_groups": num_illegal,
+        "dapo/num_replaced_groups": len(illegal_groups),
+    }
+
+    if print_debug:
+        print(f"[DAPO Polaris-style] groups: total={num_groups}, legal={num_legal}, illegal={num_illegal}")
+        if replaced_pairs:
+            print("[DAPO Polaris-style] replaced groups (bad_uid -> donor_uid):")
+            for bad_uid, donor_uid in replaced_pairs[:max_debug_groups]:
+                print(f"  {bad_uid}  -->  {donor_uid}")
+        if debug_payload:
+            print("\n[DAPO Polaris-style] some group details:")
+            for info in debug_payload:
+                print(f"  uid={info['uid']} ({info['status']})")
+                print(f"    indices: {info['indices']}")
+                print(f"    scores : {info['scores']}")
+            print("[DAPO Polaris-style] debug end\n")
+
+    return batch, reward_tensor, reward_extra_infos_dict, metrics
 
 
 @dataclass
@@ -1358,8 +1569,11 @@ class RayPPOTrainer:
                         [str(uuid.uuid4()) for _ in range(len(batch.batch))], dtype=object
                     )
                     # repeat to align with repeated responses in rollout
+                    rollout_n = self.config.actor_rollout_ref.rollout.n
                     batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
                     batch = batch.union(gen_batch_output)
+                    
+
 
                     if "response_mask" not in batch.batch.keys():
                         batch.batch["response_mask"] = compute_response_mask(batch)
@@ -1378,12 +1592,28 @@ class RayPPOTrainer:
                         if self.use_rm:
                             reward_tensor = self.rm_wg.compute_rm_score(batch)
                             batch = batch.union(reward_tensor)
+                            reward_extra_infos_dict={}
 
                         if self.config.reward_model.launch_reward_fn_async:
                             future_reward = compute_reward_async.remote(data=batch, reward_fn=self.reward_fn)
                         else:
                             reward_tensor, reward_extra_infos_dict = compute_reward(batch, self.reward_fn)
 
+                    if self.config.actor_rollout_ref.extra.use_dynamic_sampling and not (self.config.reward_model.launch_reward_fn_async):
+                        temperature = self.config.trainer.get("dyn_sampling_temperature", 1.0)
+                        max_dbg = self.config.trainer.get("dyn_sampling_debug_groups", 4)
+                        dbg_print = self.config.trainer.get("dyn_sampling_debug_print", True)
+
+                        batch, reward_tensor, reward_extra_infos_dict, dapo_metrics = dyn_sample_dapo_polaris(
+                            batch=batch,
+                            reward_tensor=reward_tensor,
+                            reward_extra_infos_dict=reward_extra_infos_dict,
+                            temperature=temperature,
+                            max_debug_groups=max_dbg,
+                            print_debug=dbg_print,
+                        )
+                        metrics.update(dapo_metrics)
+                    
                     # recompute old_log_probs
                     with marked_timer("old_log_prob", timing_raw, color="blue"):
                         old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)

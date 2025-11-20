@@ -164,6 +164,8 @@ actor_rollout_ref:
 
     enable_thinking: True
 
+    use_dynamic_sampling: False
+
     use_multiturn_wrapper: True
 
     max_num_subtasks: 8
