@@ -28,8 +28,6 @@ def compute_math_reward(
         NotImplementedError: If the reward function is not implemented for the given data source.
     """
 
-    if data_source != "basic_math":
-        raise NotImplementedError(f"Reward fordatasource of {data_source} is not defined")
     
     assert ground_truth is not None, "GT cannot be None"
     extra_info = extra_info or {}

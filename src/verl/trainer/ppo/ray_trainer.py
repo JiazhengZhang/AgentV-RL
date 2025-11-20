@@ -32,6 +32,7 @@ from typing import Optional, Dict, List
 import numpy as np
 import ray
 import torch
+import random
 from omegaconf import OmegaConf, open_dict
 from torch.utils.data import Dataset, Sampler
 from torchdata.stateful_dataloader import StatefulDataLoader
@@ -191,12 +192,11 @@ def dyn_sample_dapo_polaris(
         legal_group_scores.append(g_scores.mean().item())
 
     legal_group_scores = torch.tensor(legal_group_scores, device=device)
-    donor_probs = torch.softmax(legal_group_scores / temperature, dim=0)
 
     if print_debug:
         print("\n[DAPO Polaris-style] legal group summary:")
         for i, (uid, g_score) in enumerate(zip(legal_uids, legal_group_scores.tolist())):
-            print(f"  uid={uid}, group_score={g_score:.4f}, prob={float(donor_probs[i]):.4f}")
+            print(f"  uid={uid}, group_score={g_score:.4f}")
         print("")
 
     def _replace_seq_like(seq, dst_idx_list, src_idx_list):
@@ -213,8 +213,7 @@ def dyn_sample_dapo_polaris(
     replaced_pairs = []  # (bad_uid, donor_uid)
 
     for bad_uid, bad_idx_list in illegal_groups.items():
-        donor_legal_idx = torch.multinomial(donor_probs, num_samples=1).item()
-        donor_uid = legal_uids[donor_legal_idx]
+        donor_uid = random.choice(legal_uids)
 
         donor_idx_list = legal_groups[donor_uid]
 
