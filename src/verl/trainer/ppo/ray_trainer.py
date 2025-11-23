@@ -1285,7 +1285,7 @@ class RayPPOTrainer:
         scores = batch.batch["token_level_scores"].sum(-1).cpu().tolist()
         non_tensor_batch_keys_to_dump = (
             "stage", "plans", "subtasks", "subtask_gt", "subtask_ids","subtask_labels",
-            "dynamic_info", "reports", "subtask_executions"
+            "dynamic_info", "reports", "subtask_executions", "uid"
         )
         agent_info = {}
         for nkey in non_tensor_batch_keys_to_dump:
@@ -1729,7 +1729,7 @@ class RayPPOTrainer:
                     
                     non_tensor_batch_keys_to_dump = (
                         "reward_model", "stage", "plans", "subtasks", "subtask_gt", "subtask_ids","subtask_labels",
-                        "dynamic_info", "reports", "subtask_executions"
+                        "dynamic_info", "reports", "subtask_executions", "uid"
                     )
                     # Log rollout generations if enabled
                     rollout_data_dir = self.config.trainer.get("rollout_data_dir", None)
