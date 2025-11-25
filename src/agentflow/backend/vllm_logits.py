@@ -9,6 +9,7 @@ import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from agentflow.utils.log_util import get_logger
+from agentflow.utils.vllm import update_sampling_params
 from agentflow.utils.chat_template import is_chat_messages, safe_apply_chat_template, ChatTemplateDefaultsMixin, left_truncate_text_by_token, resolve_context_window_len
 from agentflow.core.interfaces import CanGenerate, CanChoiceProbs,SupportChatTemplate
 
@@ -96,9 +97,6 @@ class VllmChoiceLogitsBackend(ChatTemplateDefaultsMixin, CanGenerate, CanChoiceP
             Tuple[List[str],List[Dict]]: Generated sequences and any metainfo
                 - The metainfo format: {"raw_output":raw_vllm_output_object}
         """
-        sp = self.sampling_params
-        if kwargs:
-            sp = SamplingParams(**{**sp.__dict__, **kwargs})
 
         if is_chat_messages(prompts):
             prompts = self.apply_chat_template(prompts)
@@ -108,8 +106,8 @@ class VllmChoiceLogitsBackend(ChatTemplateDefaultsMixin, CanGenerate, CanChoiceP
             for i in range(len(prompts)):
                 prompts[i]=left_truncate_text_by_token(self.tokenizer, str(prompts[i]), max_prompt_len)
             
-        
-        results = self.vllm.generate(prompts=prompts, sampling_params=self.sampling_params,use_tqdm=self.use_tqdm,)
+        with update_sampling_params(self.sampling_params, **kwargs):
+            results = self.vllm.generate(prompts=prompts, sampling_params=self.sampling_params,use_tqdm=self.use_tqdm,)
         texts = [r.outputs[0].text if r.outputs else "" for r in results]
         metas = [{"raw_output": r, "prompt":prompt} for r, prompt in zip(results, prompts)]
         return texts, metas

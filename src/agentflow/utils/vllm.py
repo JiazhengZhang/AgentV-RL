@@ -16,6 +16,21 @@ class SupportVllm(Protocol):
         
 def _is_sleeping(llm: LLM):
     return llm.llm_engine.is_sleeping()
+
+@contextmanager
+def update_sampling_params(sampling_params: SamplingParams, **kwargs):
+    old_sampling_params_args = {}
+    if kwargs:
+        for key, value in kwargs.items():
+            if hasattr(sampling_params, key):
+                old_value = getattr(sampling_params, key)
+                old_sampling_params_args[key] = old_value
+                setattr(sampling_params, key, value)
+    try:
+        yield
+    finally:
+        for key, value in old_sampling_params_args.items():
+            setattr(sampling_params, key, value)
         
 @contextmanager
 def free_vllm_mem(backend, level: int = 1):

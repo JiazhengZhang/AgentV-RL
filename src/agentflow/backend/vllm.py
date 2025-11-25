@@ -6,6 +6,7 @@ from vllm import LLM, SamplingParams
 
 from agentflow.core.interfaces import CanGenerate,SupportChatTemplate
 from agentflow.utils.log_util import get_logger
+from agentflow.utils.vllm import update_sampling_params
 from agentflow.utils.chat_template import is_chat_messages, safe_apply_chat_template, ChatTemplateDefaultsMixin, left_truncate_text_by_token, resolve_context_window_len
 
 class VllmBackend(ChatTemplateDefaultsMixin, CanGenerate, SupportChatTemplate):
@@ -84,12 +85,12 @@ class VllmBackend(ChatTemplateDefaultsMixin, CanGenerate, SupportChatTemplate):
                 prompts[i]=left_truncate_text_by_token(self.tokenizer, str(prompts[i]), max_prompt_len)
                 
             
-        
-        results = self.vllm.generate(
-            prompts=prompts,
-            sampling_params=self.sampling_params,
-            use_tqdm=self.use_tqdm,
-        )
+        with update_sampling_params(self.sampling_params, **kwargs):
+            results = self.vllm.generate(
+                prompts=prompts,
+                sampling_params=self.sampling_params,
+                use_tqdm=self.use_tqdm,
+            )
         texts = [result.outputs[0].text for result in results]
         return texts, [{"raw_output": result, "prompt":prompt} for result, prompt in zip(results, prompts)]
     
@@ -184,12 +185,12 @@ class VllmInjectionBackend(ChatTemplateDefaultsMixin, CanGenerate, SupportChatTe
                 prompts[i]=left_truncate_text_by_token(self.tokenizer, str(prompts[i]), max_prompt_len)
     
             
-        
-        results = self.vllm.generate(
-            prompts=prompts,
-            sampling_params=self.sampling_params,
-            use_tqdm=self.use_tqdm,
-        )
+        with update_sampling_params(self.sampling_params, **kwargs):
+            results = self.vllm.generate(
+                prompts=prompts,
+                sampling_params=self.sampling_params,
+                use_tqdm=self.use_tqdm,
+            )
         texts = [result.outputs[0].text for result in results]
         return texts, [{"raw_output": result, "prompt":prompt} for result, prompt in zip(results, prompts)]
     

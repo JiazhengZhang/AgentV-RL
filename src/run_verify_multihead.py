@@ -163,8 +163,6 @@ class JudgeWorker:
                     tool_counts += 1
 
             if not verdict:
-                forward_scores[idx] = 0
-                final_scores[idx] = 0
                 backward_samples.append(idx)
             else:
                 backward_samples.append(idx)
@@ -203,9 +201,6 @@ class JudgeWorker:
                 forward_score   = forward_scores[flat_idx]
                 forward_verdict = forward_verdicts[flat_idx]
                 
-                if not bverdict:
-                    backward_scores[local_ind] = 0
-                    bscore = 0
 
                 final_scores[flat_idx] = (forward_score * 0.7 + bscore * 0.3) 
 
