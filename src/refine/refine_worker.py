@@ -198,13 +198,14 @@ Your goal is not only to judge correctness, but also to provide helpful, actiona
 
 Your response must follow these rules:
 
-1. In <review>...</review>, you must:
+1. In <review>...</review>:
    - Summarize the reasoning process across all earlier stages.
-   - Identify which steps were correct and explain why.
    - Identify which steps were incorrect and explain why, referencing the specific flawed assumptions or logic.
+
+2. In <suggestion>...</suggestion>:
    - Provide actionable suggestions on how to correct or improve the mistaken steps.
 
-2. In <answer>...</answer>:
+3. In <answer>...</answer>:
    - Output <answer>true</answer> only if all previous steps were correct and consistent.
    - Output <answer>false</answer> if any error, inconsistency, or unclear reasoning was found.
 
