@@ -2,7 +2,7 @@
 import os
 import torch
 import ray
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Union
 
 from agentflow.config import load_config
 from agentflow.core.interfaces import CanGenerate
@@ -28,7 +28,7 @@ def _answer_to_label(body: str) -> str:
     return "uncertain"
 
 
-def _parse_verdict_from_msgs(msgs: List[Any]) -> Tuple[str, str]:
+def _parse_verdict_from_msgs(msgs: List[Union[Message, Any]]) -> Tuple[str, str]:
     if not msgs:
         return "uncertain", ""
 
@@ -40,8 +40,16 @@ def _parse_verdict_from_msgs(msgs: List[Any]) -> Tuple[str, str]:
     else:
         body = ans_tags[-1].body
         label = _answer_to_label(body)
-
+    valid = []
+    for msg in msgs:
+        content = msg.content if hasattr(msg, "content") else ""
+        role = msg.role if hasattr(msg, "role") else ""
+        if role == "assistant" or role=="tool":
+            valid.append(content)
+    reason = "\n".join(valid) 
     reason = content
+    if len(reason) > 30000:
+        reason = reason[-30000:]
     return label, reason
 
 
