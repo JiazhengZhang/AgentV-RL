@@ -92,6 +92,7 @@ class RayPythonExecutor:
                 duration_s=self.config.time_limit_s,
             )
         except Exception as e:
+            self.shutdown()
             return ExecutionResult(
                 ok=False,
                 result="",
