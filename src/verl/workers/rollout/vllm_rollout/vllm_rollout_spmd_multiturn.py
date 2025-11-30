@@ -290,8 +290,13 @@ class vllmMultiturnWrapper:
         
         timing_generate = {}
         with simple_timer("agent generation", timing_generate):
-        
-            msgs, metas = self.forward_agent.generate(problems, solutions, **kwargs_middle)
+            forward_ratio = self.config.get("forward_ratio", 1.0)
+            assert forward_ratio >= 0 and forward_ratio <= 1
+            flag = random.random()
+            if flag < forward_ratio:
+                msgs, metas = self.forward_agent.generate(problems, solutions, **kwargs_middle)
+            else:
+                msgs, metas = self.backward_agent.generate(problems, solutions, **kwargs_middle)
             input_msgs_list = [[] for _ in range(batch_size)]
             response_ids_list = [[] for _ in range(batch_size)]
             response_mask_list = [[] for _ in range(batch_size)]
