@@ -313,20 +313,37 @@ During Stage C, you must review all earlier reasoning, identify errors, explain 
     
 class MultiheadVerifierWorker:
     
-    CONFLICT_PROMPT_TEMPLATE = """You are a final judge reviewing two verifiers who provide conflict verdicts towards a task.
+    CONFLICT_PROMPT_TEMPLATE = """You are a final judge reviewing two verifiers who provide conflicting verdicts on a task.
+
 Your task:
 1. Read the original question and the model's candidate answer.
 2. Carefully compare the two verification reports (Forward and Backward).
-3. Decide a FINAL verdict about whether the candidate answer is correct.
+3. Decide a FINAL verdict about whether the candidate answer is correct or not.
 4. Provide a clear and detailed summary of your reasoning process.
+5. If the candidate answer is incorrect, incomplete, or poorly justified,
+   provide concrete guidance on how to modify the answer into a correct and well-justified solution.
+   You may either (a) propose a fully corrected answer, or (b) give step-by-step instructions to fix it.
 
-Write your reasoning and judgment in natural language first.
+You MUST wrap your reasoning and suggestions INSIDE a single <review>...</review> block.
+The <review> block MUST clearly include:
+- whether the ORIGINAL answer is correct or not and WHY;
+- if it is not fully correct, how to revise it into a correct answer (e.g., a corrected answer or step-by-step revision instructions).
 
-At the very end of your response, on a separate line, you MUST output exactly one XML tag in one of the following forms:
+Example structure (do not output 'Example:'):
+<review>
+[Explain whether the original answer is correct or not, and why.]
+[If incorrect or incomplete, explain what is wrong.]
+[Provide a corrected answer or detailed instructions to fix the original answer.]
+</review>
+
+After the <review> block, on a separate line at the very end of your response, you MUST output exactly one XML tag in one of the following forms:
 
 <answer>true</answer>
 <answer>false</answer>
 
+The <answer> tag should ONLY reflect whether the ORIGINAL candidate answer is ultimately correct (true) or incorrect (false).
+
+Now begin.
 
 [Question]
 {question}
@@ -400,6 +417,9 @@ Reason:
         for gen in gens:
             msgs = Message.from_dicts([{"role": "assistant", "content": gen}])
             label, reason = _parse_verdict_from_msgs(msgs)
+            review_tags = find_tags(reason,["review"])
+            if review_tags:
+                reason = review_tags[-1].body
 
             outs.append({
                 "label": label,
