@@ -143,14 +143,22 @@ def main():
             rec["ground_truth"] = ground_truth
             if not ground_truth:
                 logger.warning(f"Record idx={rec.get('idx')} has no 'ground_truth' key")
+
+        initial_answer = None
+        refine_rounds = rec.get("refine_rounds")
+        if isinstance(refine_rounds, list) and len(refine_rounds) > 0:
+            first_round = refine_rounds[0] or {}
+            initial_answer = first_round.get("answer")
+
         s = {
             "idx": rec["idx"],
             "question": rec.get("question", ""),
-            "raw": rec,      
+            "raw": rec,
             "rounds": [],
             "answer": None,
             "label": None,
-            "status": "active",  
+            "status": "active",
+            "initial_answer": initial_answer,
         }
         state.append(s)
 
@@ -189,19 +197,37 @@ def main():
             logger.info(f"Round {round_id}: {len(active_indices)} active samples")
 
             logger.info(f"Round {round_id}: starting candidate phase")
+            if round_id == 0:
+                indices_need_candidate = []
+                for si in active_indices:
+                    s = state[si]
+                    init_ans = s.get("initial_answer")
+                    if init_ans:
+                        while len(s["rounds"]) <= round_id:
+                            s["rounds"].append({
+                                "answer": None,
+                                "cand_correct": None,
+                                "cand_grade": None,
+                                "label": None,
+                                "feedback": None,
+                                "process": None,
+                            })
+                        s["rounds"][round_id]["answer"] = init_ans
 
-            candidate_actors = [
-                CandidateActor.remote(
-                    candidate_config,
-                    enable_thinking=args.enable_thinking_candidate,
-                )
-                for _ in range(num_candidates)
-            ]
+                        gt = s["raw"].get("ground_truth", "")
+                        grade_info = grade_answer_verl(init_ans, gt)
+                        cand_correct = bool(grade_info.get("correct", False))
+                        s["rounds"][round_id]["cand_correct"] = cand_correct
+                        s["rounds"][round_id]["cand_grade"] = grade_info
+                    else:
+                        indices_need_candidate.append(si)
+            else:
+                indices_need_candidate = list(active_indices)
 
             cand_batch_payloads: List[List[Dict[str, Any]]] = []
-            for start in range(0, len(active_indices), batch_size):
-                end = min(start + batch_size, len(active_indices))
-                batch_idxs = active_indices[start:end]
+            for start in range(0, len(indices_need_candidate), batch_size):
+                end = min(start + batch_size, len(indices_need_candidate))
+                batch_idxs = indices_need_candidate[start:end]
                 payload: List[Dict[str, Any]] = []
                 for si in batch_idxs:
                     s = state[si]
@@ -214,47 +240,56 @@ def main():
                         item["prev_answer"] = prev_round.get("answer", "")
                         item["feedback"] = prev_round.get("feedback", "")
                     payload.append(item)
-                cand_batch_payloads.append(payload)
+                if payload:
+                    cand_batch_payloads.append(payload)
+            if cand_batch_payloads:
+                candidate_actors = [
+                    CandidateActor.remote(
+                        candidate_config,
+                        enable_thinking=args.enable_thinking_candidate,
+                    )
+                    for _ in range(num_candidates)
+                ]
 
-            def cand_submit_fn(actor, payload):
-                if round_id == 0:
-                    return actor.generate_initial_batch.remote(payload, **candidate_gen_kwargs)
-                else:
-                    return actor.generate_refine_batch.remote(payload, **candidate_gen_kwargs)
+                def cand_submit_fn(actor, payload):
+                    if round_id == 0:
+                        return actor.generate_initial_batch.remote(payload, **candidate_gen_kwargs)
+                    else:
+                        return actor.generate_refine_batch.remote(payload, **candidate_gen_kwargs)
 
-            cand_results_batches = schedule_batches_balanced(
-                actors=candidate_actors,
-                batch_payloads=cand_batch_payloads,
-                submit_fn=cand_submit_fn,
-            )
-            
-            for batch in cand_results_batches:
-                for item in batch:
-                    idx = item["idx"]
-                    pos = idx2pos[idx]
-                    s = state[pos]
+                cand_results_batches = schedule_batches_balanced(
+                    actors=candidate_actors,
+                    batch_payloads=cand_batch_payloads,
+                    submit_fn=cand_submit_fn,
+                )
 
-                    while len(s["rounds"]) <= round_id:
-                        s["rounds"].append({
-                            "answer": None,
-                            "cand_correct": None,
-                            "cand_grade": None,
-                            "label": None,
-                            "feedback": None,
-                            "process": None,
-                        })
+                for batch in cand_results_batches:
+                    for item in batch:
+                        idx = item["idx"]
+                        pos = idx2pos[idx]
+                        s = state[pos]
 
-                    ans = item["answer"]
-                    s["rounds"][round_id]["answer"] = ans
+                        while len(s["rounds"]) <= round_id:
+                            s["rounds"].append({
+                                "answer": None,
+                                "cand_correct": None,
+                                "cand_grade": None,
+                                "label": None,
+                                "feedback": None,
+                                "process": None,
+                            })
 
-                    gt = s["raw"].get("ground_truth", "")
-                    grade_info = grade_answer_verl(ans, gt)
-                    cand_correct = bool(grade_info.get("correct", False))
-                    s["rounds"][round_id]["cand_correct"] = cand_correct
-                    s["rounds"][round_id]["cand_grade"] = grade_info
+                        ans = item["answer"]
+                        s["rounds"][round_id]["answer"] = ans
 
-            for act in candidate_actors:
-                ray.kill(act, no_restart=True)
+                        gt = s["raw"].get("ground_truth", "")
+                        grade_info = grade_answer_verl(ans, gt)
+                        cand_correct = bool(grade_info.get("correct", False))
+                        s["rounds"][round_id]["cand_correct"] = cand_correct
+                        s["rounds"][round_id]["cand_grade"] = grade_info
+
+                for act in candidate_actors:
+                    ray.kill(act, no_restart=True)
 
             logger.info(f"Round {round_id}: candidate phase finished.")
 

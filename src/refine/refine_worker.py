@@ -203,7 +203,6 @@ During Stage C, you must review all earlier reasoning, identify errors, explain 
    - Summarize the reasoning process across all earlier stages.
    - If previous steps identified incorrect reasoning, or if you find new mistakes at this stage, clearly point out the flawed assumptions or logic.
    - Provide actionable suggestions on how to correct or improve these mistakes.
-   - After listing all errors and correction plans, produce a fully rewritten and improved version of the candidate’s answer that incorporates all necessary corrections.
 
 2. In <answer>...</answer>:
    - Output <answer>true</answer> only if all previous steps were correct and consistent.
@@ -261,7 +260,6 @@ During Stage C, you must review all earlier reasoning, identify errors, explain 
    - Summarize the reasoning process across all earlier stages.
    - If previous steps identified incorrect reasoning, or if you find new mistakes at this stage, clearly point out the flawed assumptions or logic.
    - Provide actionable suggestions on how to correct or improve these mistakes.
-   - After listing all errors and correction plans, produce a fully rewritten and improved version of the candidate’s answer that incorporates all necessary corrections.
 
 2. In <answer>...</answer>:
    - Output <answer>true</answer> only if all previous steps were correct and consistent.
@@ -322,26 +320,24 @@ Your task:
 4. Provide a clear and detailed summary of your reasoning process.
 5. If the candidate answer is incorrect, incomplete, or poorly justified,
    provide concrete guidance on how to modify the answer into a correct and well-justified solution.
-   You may either (a) propose a fully corrected answer, or (b) give step-by-step instructions to fix it.
 
 You MUST wrap your reasoning and suggestions INSIDE a single <review>...</review> block.
 The <review> block MUST clearly include:
 - whether the ORIGINAL answer is correct or not and WHY;
-- if it is not fully correct, how to revise it into a correct answer (e.g., a corrected answer or step-by-step revision instructions).
+- if it is not fully correct, how to revise it into a correct answer.
 
-Example structure (do not output 'Example:'):
+Example structure:
 <review>
 [Explain whether the original answer is correct or not, and why.]
 [If incorrect or incomplete, explain what is wrong.]
 [Provide a corrected answer or detailed instructions to fix the original answer.]
+[Produce a fully rewritten and improved version of the candidate’s answer that incorporates all necessary corrections.]
 </review>
 
 After the <review> block, on a separate line at the very end of your response, you MUST output exactly one XML tag in one of the following forms:
 
 <answer>true</answer>
 <answer>false</answer>
-
-The <answer> tag should ONLY reflect whether the ORIGINAL candidate answer is ultimately correct (true) or incorrect (false).
 
 Now begin.
 
