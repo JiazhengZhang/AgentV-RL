@@ -202,9 +202,11 @@ During Stage C, you must review all earlier reasoning, identify errors, explain 
 1. In <review>...</review>:
    - Summarize the reasoning process across all earlier stages.
    - If previous steps identified incorrect reasoning, or if you find new mistakes at this stage, clearly point out the flawed assumptions or logic.
-   - Provide actionable suggestions on how to correct or improve these mistakes.
 
-2. In <answer>...</answer>:
+2. In <correction>...</correction>:
+   - Provide a revised answer for the candidate to follow.
+   
+3. In <answer>...</answer>:
    - Output <answer>true</answer> only if all previous steps were correct and consistent.
    - Output <answer>false</answer> if any error, inconsistency, or unclear reasoning was found.
 
@@ -259,9 +261,11 @@ During Stage C, you must review all earlier reasoning, identify errors, explain 
 1. In <review>...</review>:
    - Summarize the reasoning process across all earlier stages.
    - If previous steps identified incorrect reasoning, or if you find new mistakes at this stage, clearly point out the flawed assumptions or logic.
-   - Provide actionable suggestions on how to correct or improve these mistakes.
 
-2. In <answer>...</answer>:
+2. In <correction>...</correction>:
+   - Provide a revised answer for the candidate to follow.
+
+3. In <answer>...</answer>:
    - Output <answer>true</answer> only if all previous steps were correct and consistent.
    - Output <answer>false</answer> if any error, inconsistency, or unclear reasoning was found.
 
@@ -311,52 +315,10 @@ During Stage C, you must review all earlier reasoning, identify errors, explain 
     
 class MultiheadVerifierWorker:
     
-    CONFLICT_PROMPT_TEMPLATE = """You are a final judge reviewing two verifiers who provide conflicting verdicts on a task.
+    SUPPORT_PROMPT="""Provide a answer of the question that a weaker assistant can follow:
+Question: {question}
+    """
 
-Your task:
-1. Read the original question and the model's candidate answer.
-2. Carefully compare the two verification reports (Forward and Backward).
-3. Decide a FINAL verdict about whether the candidate answer is correct or not.
-4. Provide a clear and detailed summary of your reasoning process.
-5. If the candidate answer is incorrect, incomplete, or poorly justified,
-   provide concrete guidance on how to modify the answer into a correct and well-justified solution.
-
-You MUST wrap your reasoning and suggestions INSIDE a single <review>...</review> block.
-The <review> block MUST clearly include:
-- whether the ORIGINAL answer is correct or not and WHY;
-- if it is not fully correct, how to revise it into a correct answer.
-
-Example structure:
-<review>
-[Explain whether the original answer is correct or not, and why.]
-[If incorrect or incomplete, explain what is wrong.]
-[Provide a corrected answer or detailed instructions to fix the original answer.]
-[Produce a fully rewritten and improved version of the candidate’s answer that incorporates all necessary corrections.]
-</review>
-
-After the <review> block, on a separate line at the very end of your response, you MUST output exactly one XML tag in one of the following forms:
-
-<answer>true</answer>
-<answer>false</answer>
-
-Now begin.
-
-[Question]
-{question}
-
-[Candidate Answer]
-{answer}
-
-[Forward Verifier]
-Label: {lf}
-Reason:
-{rf}
-
-[Backward Verifier]
-Label: {lb}
-Reason:
-{rb}
-"""
     
     def __init__(
         self,
@@ -383,73 +345,6 @@ Reason:
             system_prompt
         )
     
-    def _final_judge_batch(
-        self,
-        conflict_items: List[Dict[str, Any]],
-        generate_kwargs: Optional[Dict[str, Any]] = None,
-    ):
-        """
-        returns：
-            [{"label": ..., "reason": ...}, ...]
-        """
-
-        if generate_kwargs is None:
-            generate_kwargs = {}
-
-        prompts = []
-        for item in conflict_items:
-            prompts.append(
-                self.CONFLICT_PROMPT_TEMPLATE.format(
-                    question=item["question"],
-                    answer=item["answer"],
-                    lf=item["lf"], lb=item["lb"],
-                    rf=item["rf"], rb=item["rb"],
-                )
-            )
-
-        gens, _ = self.backend.generate(prompts, extra=None, **generate_kwargs)
-
-        outs = []
-        for gen in gens:
-            msgs = Message.from_dicts([{"role": "assistant", "content": gen}])
-            label, reason = _parse_verdict_from_msgs(msgs)
-            review_tags = find_tags(reason,["review"])
-            if review_tags:
-                reason = review_tags[-1].body
-
-            outs.append({
-                "label": label,
-                "reason": reason,
-            })
-
-        return outs
-        
-    @staticmethod
-    def _aggregate_label(lf: str, lb: str) -> str:
-        if lf == "incorrect" or lb == "incorrect":
-            return "incorrect"
-        if lf == "correct" and lb == "correct":
-            return "correct"
-        return "uncertain"
-
-    @staticmethod
-    def _aggregate_reason(
-        lf: str,
-        lb: str,
-        rf: str,
-        rb: str,
-    ) -> str:
-        """Combine forward & backward reasons into a single string."""
-        return (
-            "Forward verifier verdict: {lf}\n"
-            "Forward reasoning:\n{rf}\n\n"
-            "Backward verifier verdict: {lb}\n"
-            "Backward reasoning:\n{rb}"
-        ).format(lf=lf, lb=lb, rf=rf, rb=rb)
-        
-    @staticmethod
-    def _is_conflict(lf: str, lb: str) -> bool:
-        return lf != lb
 
     def evaluate(
         self,
@@ -466,44 +361,53 @@ Reason:
         n = len(questions)
         out: List[Dict[str, Any]] = [None] * n
 
-        conflict_indices: List[int] = []
-        conflict_items: List[Dict[str, Any]] = []
+
+        
+        error_indices: List[int] = []
+
 
         for i, (q, a, f_res, b_res) in enumerate(zip(questions, answers, out_forward, out_backward)):
             lf = f_res["label"]
             lb = b_res["label"]
             rf = f_res["reason"]
             rb = b_res["reason"]
-
-            if not self._is_conflict(lf, lb):
+            
+            lf_incorr = lf == "incorrect"
+            lb_incorr = lb == "incorrect"
+            
+            if lf_incorr or lb_incorr:
+                if lf_incorr:
+                    reason = f_res["reason"]
+                else:
+                    reason = b_res["reason"]
+                error_indices.append(i)
+                out[i] = {
+                    "label": "incorrect",
+                    "reason": reason,
+                    "process": f_res.get("process", []),
+                }
+            else:
                 out[i] = {
                     "label": f_res["label"],
                     "reason": f_res["reason"],
                     "process": f_res.get("process", []),
                 }
-            else:
-                conflict_indices.append(i)
-                conflict_items.append(
-                    {
-                        "question": q,
-                        "answer": a,
-                        "lf": lf,
-                        "lb": lb,
-                        "rf": rf,
-                        "rb": rb,
-                        "f_process": f_res.get("process", []),
-                    }
-                )
+            
 
-        if conflict_indices:
-            final_judge_results = self._final_judge_batch(conflict_items)
-
-            for idx, item, fj in zip(conflict_indices, conflict_items, final_judge_results):
-                out[idx] = {
-                    "label": fj["label"],
-                    "reason": fj["reason"],
-                    "process": item["f_process"],
-                }
+        if error_indices:
+            prompts = []
+            for idx in error_indices:
+                q = questions[idx]
+                prompts.append([{"role":"user","content":self.SUPPORT_PROMPT.format(question=q)}])
+            fixed_answers, _ = self.backend.generate(prompts, **kwargs)
+            for idx, fixed_answer in zip(error_indices, fixed_answers):
+                out[idx]["reason"] = (
+                    out[idx].get("reason", "").strip()
+                    + "\n\n"
+                    + "Suggested fix / correct solution:\n"
+                    + str(fixed_answer)
+                ).strip()
+                
 
         return out
     
