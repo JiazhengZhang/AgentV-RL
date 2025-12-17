@@ -70,10 +70,6 @@ Answer the question and provide your solution in the given format.
     
     DEFAULT_SYSTEM_REFINE="""You are revising your previous solution to a math problem based on a verifier's feedback.
 The answers should be in \\boxed{{}}.
-If the verifier marked your solution as CORRECT, keep your final answer exactly the same. Note that you still have to follow the format requirments. If previous answer is judged correct but not in the required format, also correct it.
-If the verifier marked your solution as INCORRECT or UNCERTAIN, carefully revise your solution 
-according to the feedback.
-Always output ONLY your final solution.
     """
     
     DEFAULT_USER_REFINE="""
@@ -88,7 +84,9 @@ Always output ONLY your final solution.
 
 {feedback}
 
-### Your Revision ###
+If the verifier marked your solution as INCORRECT or UNCERTAIN, carefully revise your solution according to the feedback.
+If the verifier marked your solution as CORRECT, repeat your answer in \\boxed{{}} format.
+Provide your revised or repeated version of answer in \\boxed{{}}
     """
     
     
@@ -205,6 +203,7 @@ During Stage C, you must review all earlier reasoning, identify errors, explain 
 
 2. In <correction>...</correction>:
    - Provide a revised answer for the candidate to follow.
+   - The answers should be in \\boxed{{}}.
    
 3. In <answer>...</answer>:
    - Output <answer>true</answer> only if all previous steps were correct and consistent.
@@ -240,6 +239,8 @@ During Stage C, you must review all earlier reasoning, identify errors, explain 
         out: List[Dict[str, Any]] = []
         for msgs in full_msgs:
             label, reason = _parse_verdict_from_msgs(msgs)
+            if label == "correct":
+                reason = "The answer is confirmed to be correct"
             out.append({
                 "label": label,
                 "reason": reason,
@@ -264,6 +265,7 @@ During Stage C, you must review all earlier reasoning, identify errors, explain 
 
 2. In <correction>...</correction>:
    - Provide a revised answer for the candidate to follow.
+   - The answers should be in \\boxed{{}}.
 
 3. In <answer>...</answer>:
    - Output <answer>true</answer> only if all previous steps were correct and consistent.
@@ -306,6 +308,8 @@ During Stage C, you must review all earlier reasoning, identify errors, explain 
         out: List[Dict[str, Any]] = []
         for msgs in full_msgs:
             label, reason = _parse_verdict_from_msgs(msgs)
+            if label == "correct":
+                reason = "The answer is confirmed to be correct"
             out.append({
                 "label": label,
                 "reason": reason,
@@ -390,7 +394,7 @@ The answers should be in \\boxed{{}}.
             else:
                 out[i] = {
                     "label": f_res["label"],
-                    "reason": f_res["reason"],
+                    "reason": "The answer is confirmed to be correct",
                     "process": f_res.get("process", []),
                 }
             
@@ -484,6 +488,8 @@ At the end, provide your final judgment in a single line using:
         for text, msgs in zip(texts, full_msgs):
             msgs.append(Message("assistant", text))
             label, reason = _parse_verdict_from_msgs(msgs)
+            if label == "correct":
+                reason = "The answer is confirmed to be correct"
             out.append({
                 "label": label,
                 "reason": reason,
