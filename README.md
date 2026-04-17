@@ -262,6 +262,18 @@ Requirements:
 - one process becomes the Ray head node and the others join as workers.
 
 
+## Citation
+
+```bibtex
+@misc{zhang2025agentvrl,
+  title={AgentV-RL: Scaling Reward Modeling with Agentic Verifier},
+  author={Jiazheng Zhang and Ziche Fu and Zhiheng Xi and Wenqing Jing and Mingxu Chai and Wei He and Guoqiang Zhang and Chenghao Fan and Chenxin An and Wenxiang Chen and Zhicheng Liu and Haojie Pan and Dingwei Zhu and Tao Gui and Qi Zhang and Xuanjing Huang},
+  year={2025},
+  note={Paper URL to be added}
+}
+```
+
+
 ## License
 
 This project is released under the license in `LICENSE`.
