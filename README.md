@@ -2,12 +2,6 @@
 
 # AgentV-RL: Scaling Reward Modeling with Agentic Verifier
 
-**Jiazheng Zhang, Ziche Fu, Zhiheng Xi, Wenqing Jing, Mingxu Chai, Wei He, Guoqiang Zhang, Chenghao Fan, Chenxin An, Wenxiang Chen, Zhicheng Liu, Haojie Pan, Dingwei Zhu, Tao Gui, Qi Zhang, Xuanjing Huang**
-
-<p>
-Fudan University, Huazhong University of Science and Technology, The University of Hong Kong, ByteDance Seed
-</p>
-
 <p>
 <a href="#updates">Updates</a> |
 <a href="#main-results">Results</a> |
@@ -30,22 +24,24 @@ This work is done by collaborators from Fudan University, Huazhong University of
 
 ## Main Results
 
-### Best-of-N Verification
+We evaluate AgentV-RL under two test-time scaling settings: **parallel TTS** with Best-of-N selection, and **sequential TTS** with iterative refinement.
 
-Reported `BoN@128` results for **Agentic-Verifier-Qwen3-4B**:
+### Parallel TTS: Best-of-N
 
-| Benchmark | Accuracy |
-| --- | ---: |
-| MATH500 | 79.0 |
-| GSM8K | 93.3 |
-| Gaokao2023 | 57.4 |
-| AIME24 | 53.3 |
+Accuracy of the AgentV-RL 4B verifier under different BoN budgets:
 
-The paper reports up to **25.2** absolute points improvement over prior reward-model baselines on MATH500.
+| Benchmark | BoN@32 | BoN@64 | BoN@128 |
+| --- | ---: | ---: | ---: |
+| MATH500 | 73.8 | 76.2 | 79.0 |
+| GSM8K | 93.0 | 92.6 | 93.3 |
+| Gaokao2023 | 54.5 | 55.1 | 57.4 |
+| AIME24 | 46.7 | 50.0 | 53.3 |
 
-### Iterative Refinement
+On MATH500, the paper reports up to **25.2** absolute points improvement over prior outcome-level reward model baselines.
 
-Reported multi-round refinement results for **Agentic-Verifier-Qwen3-4B**:
+### Sequential TTS: Iterative Refinement
+
+Accuracy of the AgentV-RL 4B verifier when used as the critique module in multi-round refinement:
 
 | Benchmark | Turn 1 | Turn 2 | Turn 3 |
 | --- | ---: | ---: | ---: |
@@ -53,6 +49,8 @@ Reported multi-round refinement results for **Agentic-Verifier-Qwen3-4B**:
 | GSM8K | 94.6 | 94.1 | 94.1 |
 | Gaokao2023 | 75.6 | 76.6 | 76.4 |
 | AIME24 | 40.0 | 33.3 | 33.0 |
+
+Most of the gain is obtained in the first one or two refinement rounds, with later rounds mainly stabilizing performance on the easier benchmarks.
 
 
 ## Repository Structure
