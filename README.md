@@ -9,7 +9,6 @@ Fudan University, Huazhong University of Science and Technology, The University 
 </p>
 
 <p>
-<a href="#paper">Paper</a> |
 <a href="#updates">Updates</a> |
 <a href="#main-results">Results</a> |
 <a href="#getting-started">Getting Started</a> |
@@ -18,31 +17,16 @@ Fudan University, Huazhong University of Science and Technology, The University 
 
 </div>
 
+<p align="center">
+  <img src="figures/framework-full.png" alt="AgentV-RL framework" width="100%">
+</p>
+
 ## Overview
 
-This repository contains the code for the paper **AgentV-RL: Scaling Reward Modeling with Agentic Verifier**.
+AgentV-RL is an open-source recipe for scaling reward modeling with an agentic verifier. Our method turns verification into a multi-turn process with explicit planning, stepwise validation, final verdict aggregation, and tool use, and applies it to both Best-of-N reranking and iterative refinement. In benchmark evaluations, AgentV-RL delivers strong gains on mathematical reasoning tasks, reaching 79.0 on MATH500, 93.3 on GSM8K, 57.4 on Gaokao2023, and 53.3 on AIME24 under BoN@128 with the 4B verifier.
 
-The method is built around two complementary verification directions:
+This work is done by collaborators from Fudan University, Huazhong University of Science and Technology, The University of Hong Kong, and ByteDance Seed. Our training and evaluation codebase is built on Verl. This repository includes the core inference, refinement, SFT, and GRPO training code for the AgentV-RL pipeline.
 
-- a **forward verifier** that checks whether the solution steps are sufficient to justify the conclusion;
-- a **backward verifier** that checks whether the claimed conclusion is actually grounded in the problem constraints.
-
-The verification process operates in a multi-turn setting and can call external tools such as Python for grounded computation.
-
-The repository supports two test-time scaling settings:
-
-- **Best-of-N verification**: rerank sampled candidate solutions with the verifier.
-- **Iterative refinement**: use the verifier as a critique model for multi-round correction.
-
-## Paper
-
-- **Title**: `AgentV-RL: Scaling Reward Modeling with Agentic Verifier`
-- **Paper URL**: `TBD`
-
-
-## Abstract
-
-Existing reward models and generative verifiers are often unreliable on difficult reasoning problems because they rely on single-turn judgments, suffer from error propagation, and have limited external grounding. AgentV-RL addresses this with a structured multi-turn verification process featuring explicit planning, stepwise validation, final verdict aggregation, and tool use, together with a training pipeline based on synthetic verification trajectories, multiturn supervised fine-tuning, and GRPO. The resulting method is used in both Best-of-N selection and iterative refinement settings.
 
 ## Updates
 
@@ -288,7 +272,6 @@ Requirements:
 - all machines mount the same shared filesystem;
 - each machine runs the same launch script with the same experiment metadata;
 - one process becomes the Ray head node and the others join as workers.
-
 
 
 ## License
