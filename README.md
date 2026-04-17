@@ -1,62 +1,95 @@
-<div align="center">
+<h1 align="center"><b>AgentV-RL: Scaling Reward Modeling with Agentic Verifier</b></h1>
 
-# AgentV-RL: Scaling Reward Modeling with Agentic Verifier
-
-<p>
-<a href="#updates">Updates</a> |
-<a href="#main-results">Results</a> |
-<a href="#getting-started">Getting Started</a> |
-<a href="#citation">Citation</a>
+<p align="center">
+  <a href="#">
+    <img alt="ACL 2026" src="https://img.shields.io/badge/ACL-2026-EE4C2C?style=flat&labelColor=1F1F1F" height="20">
+  </a>
+  &nbsp;
+  <a href="#citation">
+    <img alt="Paper" src="https://img.shields.io/badge/Paper-Read-blue?logo=readthedocs&logoColor=white" height="20">
+  &nbsp;
+  <a href="https://github.com/volcengine/verl">
+    <img alt="Built on Verl" src="https://img.shields.io/badge/Built%20on-verl-ff6f00?logo=pytorch&logoColor=white" height="20">
+  </a>
+  &nbsp;
+  <a href="LICENSE">
+    <img alt="License" src="https://img.shields.io/badge/License-Apache%202.0-green.svg" height="20">
+  </a>
+  &nbsp;
+  <a href="#">
+    <img alt="Python" src="https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white" height="20">
+  </a>
 </p>
 
-</div>
+
+<!-- <p align="center">
+  <a href="#-overview">Overview</a> •
+  <a href="#-main-results">Results</a> •
+  <a href="#-installation">Installation</a> •
+  <a href="#-getting-started">Getting Started</a> •
+  <a href="#-data-format">Data Format</a> •
+  <a href="#-citation">Citation</a>
+</p> -->
 
 <p align="center">
   <img src="figures/framework-full.png" alt="AgentV-RL framework" width="100%">
 </p>
 
-## Overview
+**AgentV-RL** is an open-source recipe for scaling reward modeling with an **agentic verifier**. We turn verification into a multi-turn process with explicit *planning*, *stepwise validation*, *final verdict aggregation*, and *tool use*, and apply it to both **Best-of-N reranking** and **iterative refinement**.
 
-AgentV-RL is an open-source recipe for scaling reward modeling with an agentic verifier. Our method turns verification into a multi-turn process with explicit planning, stepwise validation, final verdict aggregation, and tool use, and applies it to both Best-of-N reranking and iterative refinement. In benchmark evaluations, AgentV-RL delivers strong gains on mathematical reasoning tasks, reaching 79.0 on MATH500, 93.3 on GSM8K, 57.4 on Gaokao2023, and 53.3 on AIME24 under BoN@128 with the 4B verifier.
+> This work is done by collaborators from **Fudan University**, **Huazhong University of Science and Technology**, **The University of Hong Kong**, and **ByteDance Seed**. Our training and evaluation codebase is built on [Verl](https://github.com/volcengine/verl). This repository includes the core inference, refinement, SFT, and GRPO training code for the AgentV-RL pipeline.
 
-This work is done by collaborators from Fudan University, Huazhong University of Science and Technology, The University of Hong Kong, and ByteDance Seed. Our training and evaluation codebase is built on Verl. This repository includes the core inference, refinement, SFT, and GRPO training code for the AgentV-RL pipeline.
+---
 
+## 🔎 Overview
 
-## Main Results
+AgentV-RL reframes reward modeling as an **agentic verification process** instead of a single-pass scoring call:
+
+- 🧭 **Planning** — decompose the candidate solution into checkable sub-claims.
+- 🔬 **Stepwise validation** — validate each sub-claim with targeted reasoning and tool use.
+- 🧮 **Final verdict** — aggregate per-step judgments into a calibrated correctness signal.
+- 🛠️ **Tool use** — invoke symbolic/numeric tools when the textual trace is insufficient.
+
+The same verifier is then used at test time for **parallel TTS** (Best-of-N reranking) and **sequential TTS** (iterative refinement).
+
+---
+
+## 📊 Main Results
 
 We evaluate AgentV-RL under two test-time scaling settings: **parallel TTS** with Best-of-N selection, and **sequential TTS** with iterative refinement.
 
-### Parallel TTS: Best-of-N
+### 🧩 Parallel TTS: Best-of-N
 
 Accuracy of the AgentV-RL 4B verifier under different BoN budgets:
 
 | Benchmark | BoN@32 | BoN@64 | BoN@128 |
 | --- | ---: | ---: | ---: |
-| MATH500 | 73.8 | 76.2 | 79.0 |
-| GSM8K | 93.0 | 92.6 | 93.3 |
-| Gaokao2023 | 54.5 | 55.1 | 57.4 |
-| AIME24 | 46.7 | 50.0 | 53.3 |
+| MATH500 | 73.8 | 76.2 | **79.0** |
+| GSM8K | 93.0 | 92.6 | **93.3** |
+| Gaokao2023 | 54.5 | 55.1 | **57.4** |
+| AIME24 | 46.7 | 50.0 | **53.3** |
 
-On MATH500, the paper reports up to **25.2** absolute points improvement over prior outcome-level reward model baselines.
+> 🚀 On MATH500, the paper reports up to **+25.2** absolute points improvement over prior outcome-level reward model baselines.
 
-### Sequential TTS: Iterative Refinement
+### 🔁 Sequential TTS: Iterative Refinement
 
 Accuracy of the AgentV-RL 4B verifier when used as the critique module in multi-round refinement:
 
 | Benchmark | Turn 1 | Turn 2 | Turn 3 |
 | --- | ---: | ---: | ---: |
-| MATH500 | 84.2 | 89.2 | 89.8 |
+| MATH500 | 84.2 | 89.2 | **89.8** |
 | GSM8K | 94.6 | 94.1 | 94.1 |
-| Gaokao2023 | 75.6 | 76.6 | 76.4 |
+| Gaokao2023 | 75.6 | **76.6** | 76.4 |
 | AIME24 | 40.0 | 33.3 | 33.0 |
 
-Most of the gain is obtained in the first one or two refinement rounds, with later rounds mainly stabilizing performance on the easier benchmarks.
+> 💡 Most of the gain is obtained in the first one or two refinement rounds, with later rounds mainly stabilizing performance on the easier benchmarks.
 
+---
 
-## Repository Structure
+## 📁 Repository Structure
 
 ```text
-Agentic-Verfifier/
+AgentV-RL/
 ├── README.md
 ├── requirements.txt
 ├── config/
@@ -78,26 +111,30 @@ Agentic-Verfifier/
     └── verl/
 ```
 
-Important entrypoints:
+**Important entrypoints:**
 
-- `src/run_verify_multihead.py`: agentic Best-of-N verification
-- `src/refine/main_refine.py`: iterative refinement
-- `src/score_vanilla_infer.py`: vanilla single-pass verifier baseline
-- `examples/train_sft_multiturn.sh`: multiturn SFT
-- `examples/train_grpo.sh`: GRPO training
+| Path | Purpose |
+| --- | --- |
+| `src/run_verify_multihead.py` | Agentic Best-of-N verification |
+| `src/refine/main_refine.py` | Iterative refinement |
+| `src/score_vanilla_infer.py` | Vanilla single-pass verifier baseline |
+| `examples/train_sft_multiturn.sh` | Multiturn SFT |
+| `examples/train_grpo.sh` | GRPO training |
 
-## Installation
+---
+
+## ⚙️ Installation
 
 ```bash
 pip install -r requirements.txt
 export PYTHONPATH="$(pwd)/src:${PYTHONPATH}"
 ```
 
+---
 
+## 🚀 Getting Started
 
-## Getting Started
-
-### Best-of-N Verification
+### 🧪 Best-of-N Verification
 
 ```bash
 bash examples/run_verify_entry.sh \
@@ -112,7 +149,7 @@ bash examples/run_verify_entry.sh \
   --enable-thinking
 ```
 
-### Vanilla Verifier Baseline
+### 📏 Vanilla Verifier Baseline
 
 ```bash
 python src/score_vanilla_infer.py \
@@ -123,7 +160,7 @@ python src/score_vanilla_infer.py \
   --append
 ```
 
-### Iterative Refinement
+### 🔁 Iterative Refinement
 
 ```bash
 bash examples/run_refine_entry.sh \
@@ -145,7 +182,7 @@ bash examples/run_refine_entry.sh \
   --thinking-verifier
 ```
 
-### Training
+### 🏋️ Training
 
 #### Multiturn SFT
 
@@ -159,9 +196,11 @@ bash examples/train_sft_multiturn.sh
 bash examples/train_grpo.sh
 ```
 
-## Data Format
+---
 
-### Best-of-N Verification Input
+## 📦 Data Format
+
+### 🧪 Best-of-N Verification Input
 
 Each JSONL record contains one problem and a fixed candidate pool.
 
@@ -189,12 +228,9 @@ Each JSONL record contains one problem and a fixed candidate pool.
 }
 ```
 
-Notes:
+> ℹ️ `samples` and `evaluations` must be aligned by index — each evaluation corresponds to exactly one candidate answer.
 
-- `samples` and `evaluations` must be aligned by index.
-- each evaluation corresponds to exactly one candidate answer.
-
-### Refinement Input
+### 🔁 Refinement Input
 
 Each JSONL record contains one problem and, optionally, an initial answer.
 
@@ -221,9 +257,9 @@ Each JSONL record contains one problem and, optionally, an initial answer.
 }
 ```
 
-If no initial answer is provided, the candidate model generates it in round 0.
+> ℹ️ If no initial answer is provided, the candidate model generates it in round 0.
 
-### RL Training Input
+### 🏋️ RL Training Input
 
 The GRPO stage expects boolean verifier supervision:
 
@@ -246,23 +282,13 @@ The GRPO stage expects boolean verifier supervision:
 }
 ```
 
-Notes:
+> ℹ️ `data_source` must be `rm_bool`. The effective training input is built from `extra_info.problem` and `extra_info.solution`.
 
-- `data_source` must be `rm_bool`.
-- the effective training input is built from `extra_info.problem` and `extra_info.solution`.
+---
 
-## Multi-Node Execution
+## 📝 Citation
 
-The provided BoN and GRPO scripts support multi-node execution with Ray.
-
-Requirements:
-
-- all machines mount the same shared filesystem;
-- each machine runs the same launch script with the same experiment metadata;
-- one process becomes the Ray head node and the others join as workers.
-
-
-## Citation
+If you find AgentV-RL useful for your research, please consider citing our paper:
 
 ```bibtex
 @misc{zhang2025agentvrl,
@@ -273,7 +299,14 @@ Requirements:
 }
 ```
 
+---
 
-## License
+## 🙏 Acknowledgements
 
-This project is released under the license in `LICENSE`.
+This repository is built on top of [**Verl**](https://github.com/volcengine/verl). We gratefully acknowledge the collaboration and compute support from [**ByteDance Seed**](https://seed.bytedance.com/), and thank the open-source community for datasets such as **MATH500**, **GSM8K**, **Gaokao2023**, and **AIME24** that make this research possible.
+
+---
+
+## 📄 License
+
+This project is released under the license in [`LICENSE`](LICENSE).
